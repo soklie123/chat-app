@@ -394,8 +394,8 @@ io.on("connection", (socket) => {
     message.markModified("reactions");
     await message.save();
 
-    // ✅ Fix 1 & 2: correct event name and property name
-    // ✅ Fix 3: send to sender + everyone else in room
+    //  Fix 1 & 2: correct event name and property name
+    //  Fix 3: send to sender + everyone else in room
     const payload = { messageId, reactions: message.reactions };
     socket.emit("message_reaction_updated", payload);        // ← sender
     socket.to(roomId).emit("message_reaction_updated", payload); // ← others

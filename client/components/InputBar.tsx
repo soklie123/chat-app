@@ -2,6 +2,7 @@ import { useState, useRef } from "react";
 import axios from "axios";
 import FilePreview from "./FilePreview";
 import { useVoiceRecorder } from "../hooks/useVoiceRecorder";
+import ReplyBar from "./ReplyBar";
 
 const UPLOAD_URL = "http://localhost:4000/upload";
 
@@ -18,10 +19,31 @@ export default function InputBar({
   currentRoom,
   onSend,
   onTyping,
+  replyTo,
+  onCancelReply,
+
+  forwardMsg,
+  onCancelForward,
+  onForwardSend,
 }: {
   currentRoom: string;
-  onSend: (text: string, file?: FileData, audio?: AudioData) => void;
+  onSend: (
+    text: string, 
+    file?: FileData, 
+    audio?: AudioData,
+    replyTo?: { _id: string; username: string; text: string;}
+  ) => void;
   onTyping: (value: string) => void;
+  replyTo?: { _id: string; username: string; text: string };
+  onCancelReply?: () => void;
+
+  forwardMsg?: {
+    text: string;
+    fromUsername: string;
+  };
+
+  onCancelForward?: () => void;
+  onForwardSend?: (text: string, fromUsername: string, caption: string) => void;
 }) {
   const [message, setMessage]     = useState("");
   const [uploading, setUploading] = useState(false);
@@ -48,10 +70,27 @@ export default function InputBar({
   const { recording, start, stop } = useVoiceRecorder(handleRecorded);
 
   const handleSend = () => {
+    
+    // Send forward message
+    if (forwardMsg && onForwardSend) {
+      // Pass caption to parent so it can include it
+      onForwardSend(
+        forwardMsg.text,
+        forwardMsg.fromUsername,
+        message.trim(),
+      );
+      setMessage("");
+      setPreview(null);
+      return;
+    }
+
+    //  NORMAL MESSAGE MODE
     if (!message.trim() && !preview) return;
-    onSend(message, preview ?? undefined);
+
+    onSend(message, preview ?? undefined, undefined, replyTo);
     setMessage("");
     setPreview(null);
+    onCancelReply?.();
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -78,6 +117,39 @@ export default function InputBar({
 
   return (
     <div className="border-t border-gray-200 bg-white flex-shrink-0">
+
+      {/* Reply bar */}
+      {replyTo && onCancelReply && (
+        <ReplyBar replyTo={replyTo} onCancel={onCancelReply} />
+      )}
+
+      {/* Forward bar */}
+      {forwardMsg && onCancelForward && (
+        <div className="px-3 py-2 bg-[#f1f3f4] border-t border-gray-200 flex items-center gap-2">
+          
+          <div className="w-1 h-8 bg-orange-400 rounded-full flex-shrink-0" />
+
+          <div className="flex-1 min-w-0">
+            <div className="text-[11px] font-semibold text-orange-500">
+              Forwarded from @{forwardMsg.fromUsername}
+            </div>
+            <div className="text-[11px] text-slate-500 truncate">
+              {forwardMsg.text || "📎 File"}
+            </div>
+          </div>
+
+          <button
+            onClick={() => {
+              setMessage(""); // clear caption input
+              setPreview(null); // clear file preview
+              onCancelForward?.(); // tell parent to cancel forward mode
+            }}
+            className="text-slate-400 hover:text-slate-600"
+          >
+            ✕
+          </button>
+        </div>
+      )}
       {/* File preview */}
       {preview && (
         <div className="px-3 pt-2 flex items-start gap-2">
@@ -134,13 +206,22 @@ export default function InputBar({
           className="flex-1 px-3.5 py-2 rounded-full border border-gray-200 bg-[#f1f3f4] text-sm text-gray-800 outline-none focus:border-[#0088cc] focus:ring-2 focus:ring-[#0088cc]/20 transition-all placeholder:text-gray-400"
           value={message}
           onChange={(e) => { setMessage(e.target.value); onTyping(e.target.value); }}
-          placeholder={recording ? "Recording…" : preview ? "Add a caption…" : `Message #${currentRoom}…`}
-          disabled={recording}
+          placeholder={
+            recording
+              ? "Recording…"
+              : preview
+              ? "Add a caption…"
+              : forwardMsg
+              ? `Add a caption for @${forwardMsg.fromUsername}…`
+              : replyTo
+              ? `Replying to @${replyTo.username}…`
+              : `Message #${currentRoom}…`
+          }
           onKeyDown={(e) => e.key === "Enter" && handleSend()}
         />
 
         {/* Voice button — hold to record */}
-        {!message.trim() && !preview ? (
+        {!message.trim() && !preview && !forwardMsg ? (
           <button
             aria-label="Button voice"
             onMouseDown={start}
@@ -167,7 +248,8 @@ export default function InputBar({
           <button
             onClick={handleSend}
             aria-label="Send button"
-            disabled={!message.trim() && !preview}
+            // disabled={!message.trim() && !preview && !forwardMsg}
+            disabled={!forwardMsg && !message.trim() && !preview}
             className="w-9 h-9 rounded-full bg-[#0088cc] flex items-center justify-center text-white flex-shrink-0 hover:bg-[#0077b6] active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">

@@ -1,5 +1,4 @@
-import { useEffect, useState } from 'react';
-import { getAvatarColor } from '../hooks/useChat';
+import { useState } from 'react';
 import Avatar from './Avatar';
 
 type Toast = {
@@ -85,6 +84,7 @@ export default function NotificationBanner({
                     </div>
                     {/* Dismiss */}
                     <button
+                        title="dimiss"
                         onClick={(e) => { e.stopPropagation(); onDismiss(toast.id); }}
                         className="flex-shrink-0 text-slate-300 hover:text-slate-500 transition-colors mt-0.5"
                     >

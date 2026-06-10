@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CallState, CallInfo } from "../types/chat";
 import Avatar from "./Avatar";
 
@@ -8,7 +8,19 @@ import {
   MdScreenShare, MdStopScreenShare,
   MdCallEnd, MdCall,
   MdPhoneDisabled,
+  MdVolumeUp, 
+  MdVolumeOff,
 } from "react-icons/md";
+
+function formatCallDuration(seconds: number) {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  if (h > 0) {
+    return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  }
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
 
 export default function CallScreen({
   callState,
@@ -25,6 +37,8 @@ export default function CallScreen({
   onToggleMute,
   onToggleCamera,
   onToggleScreenShare,
+  isSpeaker,
+  onToggleSpeaker,
 }: {
   callState:           CallState;
   callInfo:            CallInfo | null;
@@ -40,9 +54,43 @@ export default function CallScreen({
   onToggleMute:        () => void;
   onToggleCamera:      () => void;
   onToggleScreenShare: () => void;
+  isSpeaker: boolean;
+  onToggleSpeaker: () => void;
 }) {
   const localVideoRef  = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  const [callDuration, setCallDuration] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Start timer when connected, stop when not
+  useEffect(() => {
+    // Only start timer when BOTH connected AND remote stream exists
+    if (callState === "connected" && remoteStream) {
+      timerRef.current = setInterval(() => {
+        setCallDuration((prev) => prev + 1);
+      }, 1000);
+
+      return () => {
+        if (timerRef.current) {
+          clearInterval(timerRef.current);
+          timerRef.current = null;
+        }
+      };
+    } else {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    }
+  }, [callState, remoteStream]); // add remoteStream as dependency
+
+  useEffect(() => {
+  if (callState === "idle") {
+    setCallDuration(0);
+  }
+}, [callState]);
 
   useEffect(() => {
     if (localVideoRef.current && localStream) {
@@ -53,6 +101,14 @@ export default function CallScreen({
   useEffect(() => {
     if (remoteVideoRef.current && remoteStream) {
       remoteVideoRef.current.srcObject = remoteStream;
+    }
+  }, [remoteStream]);
+
+  useEffect(() => {
+    if (remoteAudioRef.current && remoteStream) {
+      remoteAudioRef.current.srcObject = remoteStream;
+      // ← Add this
+      remoteAudioRef.current.play().catch((e) => console.warn("Audio play failed:", e));
     }
   }, [remoteStream]);
 
@@ -67,6 +123,13 @@ export default function CallScreen({
 
       {/* ── Main area ── */}
       <div className="flex-1 relative flex items-center justify-center overflow-hidden">
+        {/* Hidden audio element for voice-only calls */}
+      <audio
+        ref={remoteAudioRef}
+        autoPlay
+        playsInline
+        style={{ display: "none" }}
+      />
 
         {/* Remote video or avatar */}
         {hasRemoteVid ? (
@@ -125,7 +188,14 @@ export default function CallScreen({
           <div>
             <p className="text-white font-semibold">{otherUser}</p>
             <p className="text-white/50 text-xs">
-              {callState === "connected" ? "In call" : callState === "calling" ? "Calling…" : "Incoming"}
+              {callState === "connected"
+                ? remoteStream
+                  ? formatCallDuration(callDuration)  //  only show timer when stream exists
+                  : "Connecting…"                     //  show this until stream arrives
+                : callState === "calling"
+                ? "Calling…"
+                : "Incoming"
+              }
             </p>
           </div>
           <div className="flex items-center gap-1.5">
@@ -144,11 +214,11 @@ export default function CallScreen({
         {callState === "receiving" && (
           <>
             {/* Reject call button */}
-            <button onClick={onReject} className="w-14 h-14 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center transition-colors shadow-lg">
+            <button onClick={onReject} title="reject call" className="w-14 h-14 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center transition-colors shadow-lg">
               <MdPhoneDisabled size={26} color="white" />
             </button>
             {/* Answer button */}
-            <button onClick={onAnswer} className="w-14 h-14 rounded-full bg-green-500 hover:bg-green-600 flex items-center justify-center transition-colors shadow-lg">
+            <button onClick={onAnswer} title="answer call" className="w-14 h-14 rounded-full bg-green-500 hover:bg-green-600 flex items-center justify-center transition-colors shadow-lg">
               <MdCall size={26} color="white" />
             </button>
           </>
@@ -166,6 +236,17 @@ export default function CallScreen({
               icon={isMuted
                 ? <MdMicOff size={20} />
                 : <MdMic size={20} />
+              }
+            />
+            {/* Speaker toggle */}
+            <ControlButton
+              active={isSpeaker}
+              activeColor="bg-[#0088cc]"
+              onClick={onToggleSpeaker}
+              label={isSpeaker ? "Speaker" : "Earpiece"}
+              icon={isSpeaker
+                ? <MdVolumeUp size={20} />
+                : <MdVolumeOff size={20} />
               }
             />
 
@@ -194,7 +275,7 @@ export default function CallScreen({
             />
 
             {/* End call */}
-            <button onClick={onEnd} className="w-14 h-14 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center transition-colors shadow-lg">
+            <button onClick={onEnd} title="end call" className="w-14 h-14 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center transition-colors shadow-lg">
               <MdCallEnd size={26} color="white" />
             </button>
           </>

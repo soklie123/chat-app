@@ -2,12 +2,16 @@ import { useEffect, useRef, useState } from "react";
 import { ChatMessage, TypingUser } from "../types/chat";
 import Avatar from "./Avatar";
 import TypingDots from "./TypingDots";
-import ReactionPicker from "./ReactionPicker";
-import { useLongPress } from "../hooks/useLongPress";
 import FilePreview from "./FilePreview";
 import AudioPlayer from "./AudioPlayer";
 import CallEventBubble from "./CallEventBubble";
+import MessageStatusIcon from "./MessageStatus";
+import ReplyPreview from "./ReplyPreview";
+import ForwardModal from "./ForwardModal";
+import { MessageBubble } from "./MessageBubble";
 
+
+// ── Reaction bubbles ──────────────────────────────────
 function ReactionBubbles({
   reactions,
   currentUsername,
@@ -41,81 +45,61 @@ function ReactionBubbles({
   );
 }
 
-function MessageWrapper({
-  id,
-  hoveredId,
-  setHoveredId,
-  children,
-  className,
-}: {
-  id: string;
-  hoveredId: string | null;
-  setHoveredId: (id: string | null) => void;
-  children: React.ReactNode;
-  className?: string;
-}) {
-  const longPress = useLongPress(() => setHoveredId(id));
-  const leaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const handleMouseEnter = () => {
-    if (leaveTimer.current) clearTimeout(leaveTimer.current);
-    setHoveredId(id);
-  };
-
-  const handleMouseLeave = () => {
-    // Delay closing so user has time to move mouse to picker
-    leaveTimer.current = setTimeout(() => {
-      setHoveredId((current) => (current === id ? null : current));
-    }, 300); // 300ms grace period
-  }
-
-  return (
-    <div
-      className={className}
-      {...longPress}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
-      >
-      {children}
-    </div>
-  );
-}
-
+// ── Main component ────────────────────────────────────
 export default function MessageList({
   messages,
   typingUser,
   currentRoom,
   currentUsername,
   onReact,
+  onSeen,
+  onReply,
+  onForward,
+  onlineUsers,
+  rooms,
 }: {
-  messages: ChatMessage[];
-  typingUser: TypingUser | null;
-  currentRoom: string;
+  messages:        ChatMessage[];
+  typingUser:      TypingUser | null;
+  currentRoom:     string;
   currentUsername: string;
-  onReact: (messageId: string, emoji: string) => void;
+  onReact:   (messageId: string, emoji: string) => void;
+  onSeen?:   (messageIds: string[]) => void;
+  onReply:   (msg: { _id: string; username: string; text: string }) => void;
+  onForward: (text: string, fromUsername: string, to: string, isRoom: boolean) => void;
+  onlineUsers: string[];
+  rooms:       { id: string; name: string }[];
 }) {
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
-  const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [hoveredId,  setHoveredId]  = useState<string | null>(null);
+  // const [forwardMsg, setForwardMsg] = useState<{
+  //   text: string;
+  //   fromUsername: string;
+  // } | null>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, typingUser]);
 
-  // Dismiss picker when tapping outside on mobile
   useEffect(() => {
     const dismiss = (e: TouchEvent) => {
-      // Don't dismiss if touching a reaction button
-      const target = e.target as HTMLElement;  
-      if ( target.closest("[data-reaction-picker]")) return;
-      setHoveredId(null);  
+      const target = e.target as HTMLElement;
+      if (target.closest("[data-hover-panel]")) return;
+      setHoveredId(null);
     };
     document.addEventListener("touchstart", dismiss);
     return () => document.removeEventListener("touchstart", dismiss);
   }, []);
 
+  useEffect(() => {
+    const unseenIds = messages
+      .filter((m) => !m.fromSelf && m._id && m.status !== "seen")
+      .map((m) => m._id!);
+    if (unseenIds.length > 0) onSeen?.(unseenIds);
+  }, [messages]);
+
   return (
-    <div className="flex-1 px-3 py-3.5 bg-[#e5eff5] overflow-y-auto flex flex-col gap-2">
-      <div className="flex items-center gap-2 my-1">
+    <div className="flex-1 overflow-y-auto px-3 py-3.5 bg-[#e5eff5]">
+      <div className="flex flex-col gap-2">
         <div className="flex-1 h-px bg-black/10" />
         <span className="text-[11px] text-slate-500 bg-[#dce8f0] px-2.5 py-0.5 rounded-full">
           # {currentRoom}
@@ -126,155 +110,209 @@ export default function MessageList({
       {messages.map((msg, i) => {
         const id = msg._id ?? String(i);
 
-        // Call event message
         if (msg.callEvent) {
-          <CallEventBubble
-            key={id}
-            callEvent={msg.callEvent}
-            callType={msg.callType ?? "voice"}
-            callDuration={msg.callDuration}
-            fromSelf={msg.fromSelf}
-            username={msg.username}
-            time={msg.time}
-          />
+          return (
+            <CallEventBubble
+              key={id}
+              callEvent={msg.callEvent}
+              callType={msg.callType ?? "voice"}
+              callDuration={msg.callDuration}
+              fromSelf={msg.fromSelf}
+              username={msg.username}
+              time={msg.time}
+            />
+          );
         }
-        
-        const isHovered = hoveredId === id;
 
         return msg.fromSelf ? (
-          // Own message (right side)
-          <MessageWrapper
-            key={id}
-            id={id}
-            hoveredId={hoveredId}
-            setHoveredId={setHoveredId}
-            className="flex justify-end self-end max-w-[80%] relative group"
-          >
-            {/* Reaction picker — left of bubble */}
-            {isHovered && msg._id && (
-              <div 
-                data-reaction-picker
-                className="absolute right-0 mr-2 -top-10 z-20"
-                onMouseEnter={() => {
-                  // Cancel any pending close when hovering picker
-                  setHoveredId(id);
-                }}
-                onMouseLeave={() => {
-                  setHoveredId(null);
-                }}
-                >
-                <ReactionPicker onSelect={(emoji) => {
-                  onReact(msg._id!, emoji);
-                  setHoveredId(null); // Close after selecting reaction
-                  }} 
-                />
-              </div>
-            )}
+          // ── Own message ──────────────────────────────
+          <div key={id} className="flex justify-end self-end max-w-[80%]">
+            <MessageBubble
+              id={id}
+              hoveredId={hoveredId}
+              setHoveredId={setHoveredId}
+              fromSelf={true}
+              msgId={msg._id}
+              msgUsername={msg.username}
+              msgText={msg.text}
+              onReact={onReact}
+              onReply={onReply}
+              onForward={(text, fromUsername) =>
+                onForward(text, fromUsername, currentRoom, true)
+              }
+              onlineUsers={onlineUsers}
+              rooms={rooms}
+              currentUsername={currentUsername}
+            >
+              <div className="bg-[#dcf8c6] rounded-2xl rounded-tr-sm px-3.5 py-2.5 text-sm text-[#1c3906] leading-relaxed shadow-[0_1px_2px_rgba(0,0,0,0.06)] max-w-full">
 
-          <div className="bg-[#dcf8c6] rounded-2xl rounded-tr-sm px-3.5 py-2.5 text-sm text-[#1c3906] leading-relaxed shadow-[0_1px_2px_rgba(0,0,0,0.06)] max-w-full">
-            {msg.text}
+                {/* ✅ FORWARDED LABEL */}
+                {msg.forwarded && (
+                  <div className="text-[10px] text-[#4a7a3a] mb-1 flex items-center gap-1">
+                    <svg
+                      width="10"
+                      height="10"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
+                      <polyline points="15 17 20 12 15 7" />
+                      <path d="M4 18v-2a4 4 0 0 1 4-4h12" />
+                    </svg>
+                    <span>
+                      Forwarded from @{msg.fromUsername || msg.username}
+                    </span>
+                  </div>
+                )}
 
-            {msg.audioUrl && (
-                <AudioPlayer
-                  audioUrl={msg.audioUrl}
-                  audioDuration={msg.audioDuration}
-                  fromSelf={msg.fromSelf}
-                />
-            )}
-            {msg.fileUrl && (
-              <FilePreview
-                fileUrl={msg.fileUrl}
-                fileName={msg.fileName}
-                fileType={msg.fileType}
-                isImage={msg.isImage}
-              />
-            )}
-            
-            {msg.reactions && msg.reactions.length > 0 && (
-              <div className="flex flex-wrap gap-1 mt-1.5 max-w-full">
-                <ReactionBubbles
-                  reactions={msg.reactions}
-                  currentUsername={currentUsername}
-                  onReact={(emoji) => msg._id && onReact(msg._id, emoji)}
-                />
-              </div>
-            )}
-            <div className="flex items-center justify-end gap-1 mt-1">
-              <span className="text-[10px] text-[#6a9c5a]">{msg.time}</span>
-              <svg width="14" height="10" viewBox="0 0 16 11" fill="none">
-                <path d="M1 5.5L5 9.5L11 1.5" stroke="#4ade80" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                <path d="M6 5.5L10 9.5L15.5 1.5" stroke="#4ade80" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </div>
-          </div>
-          </MessageWrapper>
-        ) : (
-          // ── Other user message (left side) ──
-          <MessageWrapper
-            key={id}
-            id={id}
-            hoveredId={hoveredId}
-            setHoveredId={setHoveredId}
-            className="flex items-end gap-1.5 max-w-[80%] relative"
-          >
-            <Avatar name={msg.username} size={28} />
-            <div>
-              <div className="text-[11px] text-slate-500 mb-1 ml-0.5">
-              {msg.username}
-              </div>
-              <div className="bg-white rounded-2xl rounded-tl-sm px-3.5 py-2.5 text-sm text-[#1a1a1a] leading-relaxed shadow-[0_1px_2px_rgba(0,0,0,0.06)] max-w-full">
-              {msg.text}
+                {/* ✅ Reply */}
+                {msg.replyTo && (
+                  <ReplyPreview replyTo={msg.replyTo} fromSelf={true} />
+                )}
 
-              {msg.audioUrl && (
-                <AudioPlayer
-                  audioUrl={msg.audioUrl}
-                  audioDuration={msg.audioDuration}
-                  fromSelf={msg.fromSelf}
-                />
-              )}
-              {/* Add inside own message bubble after {msg.text} */}
-              {msg.fileUrl && (
-                <FilePreview
-                  fileUrl={msg.fileUrl}
-                  fileName={msg.fileName}
-                  fileType={msg.fileType}
-                  isImage={msg.isImage}
-                />
-              )}
+                {/* ✅ Main text */}
+                {msg.text && <span>{msg.text}</span>}
 
-              {msg.reactions && msg.reactions.length > 0 && (
-                <div className="flex flex-wrap gap-1 mt-1.5 max-w-full">
+                {/* ✅ Caption */}
+                {msg.caption && (
+                  <div className="text-[11px] text-gray-600 mt-1">
+                    {msg.caption}
+                  </div>
+                )}
+
+                {/* ✅ Audio */}
+                {msg.audioUrl && (
+                  <AudioPlayer
+                    audioUrl={msg.audioUrl}
+                    audioDuration={msg.audioDuration}
+                    fromSelf={true}
+                  />
+                )}
+
+                {/* ✅ File */}
+                {msg.fileUrl && (
+                  <FilePreview
+                    fileUrl={msg.fileUrl}
+                    fileName={msg.fileName}
+                    fileType={msg.fileType}
+                    isImage={msg.isImage}
+                  />
+                )}
+
+                {/* ✅ Reactions */}
+                {msg.reactions && msg.reactions.length > 0 && (
                   <ReactionBubbles
-                      reactions={msg.reactions}
+                    reactions={msg.reactions}
                     currentUsername={currentUsername}
                     onReact={(emoji) => msg._id && onReact(msg._id, emoji)}
                   />
-                </div>
-              )}
-              <div className="text-[10px] text-slate-400 mt-1 text-right">{msg.time}</div>
-            </div>
-            </div>
+                )}
 
-            {/* Reaction picker — right of bubble */}
-            {isHovered && msg._id && (
-              <div 
-                data-reaction-picker
-                className="absolute left-0 -top-10 z-20"
-                onMouseEnter={() => {
-                  setHoveredId(id);
-                }}
-                onMouseLeave={() => {
-                  setHoveredId(null);
-                }}
-                >
-                <ReactionPicker onSelect={(emoji) => {
-                  onReact(msg._id!, emoji)
-                  setHoveredId(null); // Close after selecting reaction
-                  }} 
-                />
+                {/* ✅ Footer */}
+                <div className="flex items-center justify-end gap-1 mt-1">
+                  <span className="text-[10px] text-[#6a9c5a]">{msg.time}</span>
+                  <MessageStatusIcon status={msg.status} />
+                </div>
               </div>
-            )}
-          </MessageWrapper>
+            </MessageBubble>
+          </div>
+        ) : (
+          // ── Other user message ────────────────────────
+          <div key={id} className="flex items-end gap-1.5 max-w-[80%]">
+            <Avatar name={msg.username} size={28} />
+            <div className="flex-1 min-w-0">
+              <div className="text-[11px] text-slate-500 mb-1 ml-0.5">
+                {msg.username}
+              </div>
+
+              <MessageBubble
+                id={id}
+                hoveredId={hoveredId}
+                setHoveredId={setHoveredId}
+                fromSelf={false}
+                msgId={msg._id}
+                msgUsername={msg.username}
+                msgText={msg.text}
+                onReact={onReact}
+                onReply={onReply}
+                onForward={onForward}
+                onlineUsers={onlineUsers}
+                rooms={rooms}
+                currentUsername={currentUsername}
+              >
+                <div className="bg-white rounded-2xl rounded-tl-sm px-3.5 py-2.5 text-sm text-[#1a1a1a] leading-relaxed shadow-[0_1px_2px_rgba(0,0,0,0.06)] max-w-full">
+
+                  {/* ✅ FORWARDED LABEL */}
+                  {msg.forwarded && (
+                    <div className="text-[10px] text-slate-400 mb-1 flex items-center gap-1">
+                      <svg
+                        width="10"
+                        height="10"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                      >
+                        <polyline points="15 17 20 12 15 7" />
+                        <path d="M4 18v-2a4 4 0 0 1 4-4h12" />
+                      </svg>
+                      <span>
+                        Forwarded from @{msg.fromUsername || msg.username}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* ✅ Reply */}
+                  {msg.replyTo && (
+                    <ReplyPreview replyTo={msg.replyTo} fromSelf={false} />
+                  )}
+
+                  {/* ✅ Main text */}
+                  {msg.text && <span>{msg.text}</span>}
+
+                  {/* ✅ Caption */}
+                  {msg.caption && (
+                    <div className="text-[11px] text-gray-500 mt-1">
+                      {msg.caption}
+                    </div>
+                  )}
+
+                  {/* ✅ Audio */}
+                  {msg.audioUrl && (
+                    <AudioPlayer
+                      audioUrl={msg.audioUrl}
+                      audioDuration={msg.audioDuration}
+                      fromSelf={false}
+                    />
+                  )}
+
+                  {/* ✅ File */}
+                  {msg.fileUrl && (
+                    <FilePreview
+                      fileUrl={msg.fileUrl}
+                      fileName={msg.fileName}
+                      fileType={msg.fileType}
+                      isImage={msg.isImage}
+                    />
+                  )}
+
+                  {/* ✅ Reactions */}
+                  {msg.reactions && msg.reactions.length > 0 && (
+                    <ReactionBubbles
+                      reactions={msg.reactions}
+                      currentUsername={currentUsername}
+                      onReact={(emoji) => msg._id && onReact(msg._id, emoji)}
+                    />
+                  )}
+
+                  <div className="text-[10px] text-slate-400 mt-1 text-right">
+                    {msg.time}
+                  </div>
+                </div>
+              </MessageBubble>
+            </div>
+          </div>
         );
       })}
 
@@ -289,6 +327,25 @@ export default function MessageList({
           </div>
         </div>
       )}
+
+      {/* {forwardMsg && (
+        <ForwardModal
+          text={forwardMsg.text}
+          fromUsername={forwardMsg.fromUsername}
+          onlineUsers={onlineUsers}
+          rooms={rooms}
+          username={currentUsername}
+          onForwardToDM={(to) => { 
+            onForward(forwardMsg.text, forwardMsg.fromUsername, to, false); 
+            setForwardMsg(null); 
+          }}
+          onForwardToRoom={(roomId) => { 
+            onForward(forwardMsg.text, forwardMsg.fromUsername, roomId, true); 
+            setForwardMsg(null); 
+          }}
+          onClose={() => setForwardMsg(null)}
+        />
+      )} */}
 
       <div ref={messagesEndRef} />
     </div>

@@ -1,5 +1,4 @@
 import { DMConversation } from "../types/chat";
-import { getAvatarColor } from "../hooks/useChat";
 import Avatar from "./Avatar";
 
 export default function DMList({

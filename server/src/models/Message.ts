@@ -1,17 +1,26 @@
 import mongoose, { Schema, Document } from "mongoose";
-
 export interface IMessage extends Document {
   text:      string;
   username:  string;
-  room:      string;   
+  room:      string; 
+
   reactions: { emoji: string; count: number; usernames: string[] }[];
+
   fileUrl?: string;
   fileName?: string;
   fileType?: string;
   isImage?: boolean;
+
   audioUrl?: string;
   audioDuration?: number;
+
+  replyTo?: { _id: string; username: string; text: string };
+  forwarded?: boolean;
+
+  fromUsername?: string;
+  caption?: string;
   createdAt: Date;
+
 }
 
 const reactionSchema = new mongoose.Schema({
@@ -35,6 +44,14 @@ const MessageSchema = new Schema<IMessage>({
   // Sent voice 
   audioUrl: { type: String },
   audioDuration: { type: Number },
+
+  replyTo: {
+    _id: { type: String },
+    username: { type: String },
+    text: { type: String }
+  },
+  forwarded: { type: Boolean, default: false }
+
 
 }, { timestamps: true });
 

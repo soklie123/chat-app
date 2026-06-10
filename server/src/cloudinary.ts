@@ -20,7 +20,7 @@ export const uploadToCloudinary = (
   buffer: Buffer,
   mimetype: string,
   originalname: string
-): Promise<{ url: string; isImage: boolean }> => {
+): Promise<{ url: string; isImage: boolean; }> => {
   return new Promise((resolve, reject) => {
     const isImage = mimetype.startsWith("image/");
     const isAudio = mimetype.startsWith("audio/");

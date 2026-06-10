@@ -28,7 +28,6 @@ export default function AudioPlayer({
   const [duration, setDuration] = useState(audioDuration);
   const [currentTime, setCurrentTime] = useState(0);
 
-
   const drawBarsFromData = (heights: number[]) => {
     const canvas = canvasRef.current;
     if (!canvas) return;

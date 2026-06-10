@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState} from "react";
 import { Socket } from "socket.io-client";
 import { CallType, CallState, CallInfo } from "../types/chat";
-import { connect } from "net";
-import { send } from "process";
 
 const ICE_SERVERS = {
     iceServers: [
@@ -28,35 +26,42 @@ export function useCall(
     const [isMuted, setIsMuted] = useState(false);
     const [isCamOff, setIsCamOff] = useState(false); // camera off by default
     const [isSharing, setIsSharing] = useState(false); // screen share
+    const [isSpeaker, setIsSpeaker] = useState(false); // speakerphone
+
+    const audioCtxRef    = useRef<AudioContext | null>(null);
+    const gainNodeRef    = useRef<GainNode | null>(null);
+    const sourceNodeRef  = useRef<MediaStreamAudioSourceNode | null>(null);
+    const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
+
 
     const pcRef = useRef<RTCPeerConnection | null>(null);
     const screenTrackRef = useRef<MediaStreamTrack | null>(null);
 
     const callStartRef = useRef<number | null>(null);
-    // const callIdRef = useRef<string>("");
-    // const offerRef = useRef<RTCSessionDescriptionInit | null>(null);
 
     // _____ Clean up _________________________
     const cleanup = () => {
+    gainNodeRef.current?.disconnect();
+    sourceNodeRef.current?.disconnect();
+    audioCtxRef.current?.close();
+    audioCtxRef.current   = null;
+    gainNodeRef.current   = null;
+    sourceNodeRef.current = null;
+    setIsSpeaker(false);
 
-        // Stop screen share of active
-        if (screenTrackRef.current) {
-            screenTrackRef.current.stop();
-            screenTrackRef.current = null;
-        }
-
-        pcRef.current?.close();
-        pcRef.current = null;
-        //offerRef.current = null;
-        localStream?.getTracks().forEach((t) => t.stop());
-        setLocalStream(null);
-        setRemoteStream(null);
-        setCallState("idle");
-        setCallInfo(null);
-        setIsMuted(false);
-        setIsCamOff(true);
-        setIsSharing(false);
-    }
+    screenTrackRef.current?.stop();
+    screenTrackRef.current = null;
+    pcRef.current?.close();
+    pcRef.current = null;
+    localStream?.getTracks().forEach((t) => t.stop());
+    setLocalStream(null);
+    setRemoteStream(null);
+    setCallState("idle");
+    setCallInfo(null);
+    setIsMuted(false);
+    setIsCamOff(true);
+    setIsSharing(false);
+    };
     // ── Get media stream ───────────────────────────────────
     // Mic ON, camera OFF by default
     const getStream = async () => {
@@ -89,6 +94,68 @@ export function useCall(
         pc.ontrack = (e) => setRemoteStream(e.streams[0]);
 
         return pc;
+    };
+    // toggle speaker 
+    const toggleSpeaker = async () => {
+    try {
+        // Find the hidden audio element in the DOM
+        const audioEl = document.querySelector(
+        "audio[autoplay]"
+        ) as HTMLAudioElement & { setSinkId?: (id: string) => Promise<void> };
+
+        console.log("Audio element found:", audioEl);
+        console.log("Audio srcObject:", audioEl?.srcObject);
+        console.log("Audio paused:", audioEl?.paused);
+        console.log("Remote stream:", remoteStream);
+
+        if (!audioEl) {
+            console.warn("No audio element found");
+            return;
+        }
+
+        if (!isSpeaker) {
+        // ── Turn speaker ON via Web Audio API ──
+        if (!audioCtxRef.current) {
+            audioCtxRef.current = new AudioContext();
+        }
+        const ctx = audioCtxRef.current;
+        await ctx.resume();
+
+        if (!sourceNodeRef.current) {
+            sourceNodeRef.current = ctx.createMediaElementSource(audioEl);
+        }
+
+        if (!gainNodeRef.current) {
+            gainNodeRef.current = ctx.createGain();
+            gainNodeRef.current.gain.value = 2.0; // boost for speaker
+        }
+
+        sourceNodeRef.current.connect(gainNodeRef.current);
+        gainNodeRef.current.connect(ctx.destination);
+        setIsSpeaker(true);
+        } else {
+        // ── Turn speaker OFF ──
+        gainNodeRef.current?.disconnect();
+        sourceNodeRef.current?.disconnect();
+        gainNodeRef.current  = null;
+        sourceNodeRef.current = null;
+
+        // Close and recreate context so audio goes back to default
+        await audioCtxRef.current?.close();
+        audioCtxRef.current = null;
+
+        // Re-attach stream to audio element directly
+        if (remoteStream) {
+            audioEl.srcObject = remoteStream;
+            await audioEl.play().catch(() => {});
+        }
+
+        setIsSpeaker(false);
+        }
+    } catch (err) {
+        console.warn("Speaker toggle error:", err);
+        setIsSpeaker((s) => !s);
+    }
     };
 
     // ── Socket listeners ───────────────────────────────────
@@ -461,6 +528,7 @@ export function useCall(
         isMuted,
         isCamOff,
         isSharing,
+        isSpeaker,
         startCall,
         answerCall,
         endCall,
@@ -468,6 +536,7 @@ export function useCall(
         toggleCamera,
         toggleMute,
         toggleScreenShare,
+        toggleSpeaker,
     };
 
 }

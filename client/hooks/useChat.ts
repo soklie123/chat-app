@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
-import { ChatMessage, TypingUser } from "../types/chat";
+import { ChatMessage, TypingUser, MessageStatus } from "../types/chat";
 
 const SOCKET_URL = "http://localhost:4000";
 const DEFAULT_ROOM = "general";
@@ -32,15 +32,13 @@ export function useChat(username: string) {
   // Add this state near the top with other states
   const [socket, setSocket] = useState<Socket | null>(null);
 
-  
-
   useEffect(() => {
     // Only connect once username is set
     if (!username) return;
 
     const socket = io(SOCKET_URL, {
-  timeout: 5000,
-  reconnectionAttempts: 3,
+      timeout: 5000,
+      reconnectionAttempts: 3,
     });
     socketRef.current = socket;
     // setSocket(socket);
@@ -73,6 +71,10 @@ export function useChat(username: string) {
       fileName?: string;
       fileType?: string;
       isImage?: boolean;
+      audioUrl?: string;
+      audioDuration?: number;
+      fromUsername?: string; // for forwarded messages
+      caption?: string;      // for forwarded messages
     }>;
     hasMore: boolean;
   }) => {
@@ -93,6 +95,9 @@ export function useChat(username: string) {
         isImage: m.isImage,
         audioUrl:      m.audioUrl,
         audioDuration: m.audioDuration,
+        status: "seen" as MessageStatus, // history is always seen
+        fromUsername: m.fromUsername,
+        caption: m.caption,
       }))
     );
   });
@@ -110,6 +115,7 @@ export function useChat(username: string) {
     socket.on("receive_message", (data: { 
       _id: string;
       text: string; 
+      tempId?: string; //
       username: string; 
       time: string; 
       fileUrl?:  string;  //  add
@@ -118,25 +124,78 @@ export function useChat(username: string) {
       isImage?:  boolean; //  add
       audioUrl?: string;    //  add
       audioDuration?: number; //  add
+
+      replyTo?: { _id: string; username: string; text: string };
+      forwarded?: boolean;
+      fromUsername?: string; // for forwarded messages
+      caption?: string;      // for forwarded messages
     }) => {
-      setMessages((prev) => [
-        ...prev,
-        {
-          _id: data._id,
-          text:     data.text,
-          fromSelf: data.username === username,
-          time:     data.time,
-          username: data.username,
-          color:    getAvatarColor(data.username),
-          reactions: [], //  reactions will be populated when we implement that feature
-          fileUrl:  data.fileUrl,  //  add
-          fileName: data.fileName, //  add
-          fileType: data.fileType, //  add
-          isImage:  data.isImage,  //  add
-          audioUrl: data.audioUrl,   //  add
-          audioDuration: data.audioDuration, //  add
-        },
-      ]);
+      if (data.username === username) {
+        // Our own message confirmed by server - update from tempId to real _id
+        setMessages((prev) => 
+          prev.map((msg) => 
+            msg._id === data.tempId 
+              ? { 
+                ...msg, 
+                _id: data._id, 
+                status: "sent" as MessageStatus 
+              } 
+            : msg
+          )
+        );
+        return;
+      }
+
+      // Someone else's message
+      const newMsg: ChatMessage = {
+        _id: data._id,
+        text: data.text,
+        fromSelf: false,
+        time: data.time,
+        username: data.username,
+        color: getAvatarColor(data.username),
+        reactions: [],
+        status: "delivered" as const, //  new messages are at least delivered
+        fileUrl: data.fileUrl,
+        fileName: data.fileName,
+        fileType: data.fileType,
+        isImage: data.isImage,
+        audioUrl: data.audioUrl,
+        audioDuration: data.audioDuration,
+        replyTo:   data.replyTo,
+        forwarded: data.forwarded ?? false,
+        fromUsername: data.fromUsername ?? undefined,
+        caption: data.caption ?? "",
+      };
+      
+      setMessages((prev) => [...prev, newMsg]);
+
+      // Tell server we received it (for seen status)
+      socketRef.current?.emit("message_delivered", {
+        messageId: data._id,
+        to: data.username,
+      });
+    });
+// =======================================================================
+    // Message delivered to recipient
+    socket.on("message_delivered", ({ messageId }: { messageId: string }) => {
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg._id === messageId && (msg.status === "sent" || msg.status === "sending")
+            ? { ...msg, status: "delivered" as MessageStatus }  // cast
+            : msg
+        )
+      );
+    });
+
+    // Message seen by recipient
+    socket.on("messages_seen", ({ messageIds } : { messageIds: string[] }) =>{
+      setMessages((prev) => prev.map((msg) =>
+        messageIds.includes(msg._id ?? "")  && msg.fromSelf 
+          ? { ...msg, status: "seen" as MessageStatus } 
+          : msg
+        )
+      );
     });
 
     // Typing now receives plain string (backend emits username string)
@@ -171,19 +230,56 @@ export function useChat(username: string) {
       fileType: string;
       isImage: boolean;
     },
-    audio?: { audioUrl: string; audioDuration: number}
+    audio?: { audioUrl: string; audioDuration: number},
+    replyTo?: { _id: string; username: string; text: string },
+    forwarded?: boolean,
+    fromUsername?: string, // for forwarded messages
+    caption?: string,      // for forwarded messages
   ) => {
+    const safeText = text ?? "";
+    if (!safeText.trim() && !file && !audio) return;
 
-    if (!text.trim() && !file && !audio) return;
     if (!socketRef.current) return;
+
+    const tempId = `temp-${Date.now()}`;
+    
+    setMessages((prev) => [
+      ...prev,
+      {
+        _id: tempId,
+        text: text || "",
+        fromSelf: true,
+        time: new Date().toLocaleTimeString([], {
+          hour: "2-digit", minute: "2-digit",
+        }),
+        username,
+
+        color: getAvatarColor(username),
+        reactions: [],
+        status: "sending", // sending
+
+        replyTo,
+        forwarded,
+        fromUsername,
+        caption,
+
+        ...file,
+        ...audio,
+      },
+    ]);
 
     //  Include roomId in payload
     socketRef.current.emit("send_message", { 
       text, 
       username, 
       roomId: currentRoom,
-    ...file, // spreads fileUrl, fileName, fileType, isImage if present
-    ...audio, // spreads audioUrl and audioDuration if present
+      tempId, // pass tempId so server can include it in the ack
+      replyTo,
+      forwarded,
+      fromUsername,
+      caption,
+      ...file, // spreads fileUrl, fileName, fileType, isImage if present
+      ...audio, // spreads audioUrl and audioDuration if present
     });
     socketRef.current.emit("stop_typing", currentRoom); //  pass roomId
   };
@@ -196,6 +292,14 @@ export function useChat(username: string) {
     } else {
       socketRef.current.emit("stop_typing", currentRoom); //  pass roomId
     }
+  };
+
+  const markRoomSeen = (messageIds: string[]) => {
+    if (!socketRef.current || messageIds.length === 0) return;
+    socketRef.current.emit("messages_seen", {
+      messageIds,
+      roomId: currentRoom,
+    });
   };
 
   const joinRoom = (roomId: string) => {
@@ -239,10 +343,12 @@ export function useChat(username: string) {
 
     sendMessage,
     emitTyping,
-    joinRoom,
+    markRoomSeen, // seen
+    joinRoom, 
 
     createRoom, //
     addReaction, //
     logout,
+  
   };
 }

@@ -11,10 +11,10 @@ import MessageList from "../components/MessageList";
 import InputBar from "../components/InputBar";
 import DMPanel from "../components/DMPanel";
 import CallScreen from "../components/CallScreen";
+import ForwardBar from "../components/ForwardBar";
 
 export default function Home() {
   const [username, setUsername] = useState("");
-  
 
   const {
     socket,
@@ -30,6 +30,7 @@ export default function Home() {
     createRoom,
     addReaction,
     logout,
+    markRoomSeen,
   } = useChat(username);
 
   const {
@@ -41,6 +42,7 @@ export default function Home() {
     closeDM,
     sendDM,
     emitDMTyping,
+    markDMSeen,
     addCallEventMessage,
   } = useDM(socket, username);
   
@@ -58,6 +60,7 @@ export default function Home() {
     isMuted,
     isCamOff,
     isSharing,
+    isSpeaker,
     startCall,
     answerCall,
     endCall,
@@ -65,6 +68,7 @@ export default function Home() {
     toggleMute,
     toggleCamera,
     toggleScreenShare,
+    toggleSpeaker,
   } = useCall(socket, username, (event) => {
     console.log("onCallEvent received:", event);
     const withUser = event.with || activeDMRef.current || "";
@@ -89,18 +93,79 @@ export default function Home() {
     }
   });
 
+  // for replying to messages in rooms or DMs
+  const [replyTo, setReplyTo] = useState<{ 
+    _id: string; username: string; text: string 
+  } | null>(null);
+
+  // ========= Forward ========================================================
+  const [forwardData, setForwardData] = useState<{
+    text: string;
+    fromUsername: string;
+  } | null>(null);
+
+  const cancelForward = () => setForwardData(null);
+  // Hanle forward
+  const handleForward = (
+    text: string,
+    fromUsername: string,
+    to: string,
+    isRoom: boolean
+  ) => {
+    console.log("FORWARDING:", { text, fromUsername, to, isRoom });
+    if (isRoom) {
+      closeDM();
+      joinRoom(to);
+    } else {
+      openDM(to);
+    }
+
+    setTimeout(() => {
+      setForwardData({
+        text,
+        fromUsername,
+      });
+    }, 200);
+  };
+
+  const sendForward = (caption: string) => {
+    if (!forwardData) return;
+
+    if (activeDM) {
+      sendDM(
+        forwardData.text,
+        undefined,
+        undefined,
+        undefined,
+        true,
+        forwardData.fromUsername,
+        caption.trim()
+      );
+    } else {
+      sendMessage(
+        forwardData.text,
+        undefined,
+        undefined,
+        undefined,
+        true,
+        forwardData.fromUsername,
+        caption.trim()
+      );
+    }
+    setForwardData(null);
+  }
+
+  const [dmReplyTo, setDMReplyTo] = useState<{ 
+    _id: string; username: string; text: string 
+  } | null>(null);
 
   // ====================================================================================
 
   const { notifyMessage, notifyDM } = useNotifications(username);
   const { toasts, addToast, removeToast } = useToasts();
 
-  // ── Notify on new room message ──────────────────────
-  const prevMessageLen = useState(0);
-
   // Track previous message count to detect new ones
   const [prevLen, setPrevLen] = useState(0);
-
 
   if (messages.length > prevLen) {
     const newMsg = messages[messages.length - 1];
@@ -123,6 +188,7 @@ export default function Home() {
     }
     setPrevDMLen(dmMessages.length);
   }
+
 
   // ── Notify on new DM from conversations (when DM not open) ──
   const [prevConvUnread, setPrevConvUnread ] = useState(0);
@@ -157,7 +223,8 @@ export default function Home() {
   if (!username) {
     return <UsernameGate onJoin={setUsername} />;
   }
-console.log("callState:", callState, "callInfo:", callInfo);
+// console.log("callState:", callState, "callInfo:", callInfo);
+
 
   return (
     <>
@@ -175,16 +242,6 @@ console.log("callState:", callState, "callInfo:", callInfo);
         }
       `}
       </style>
-      {callState !== "idle" && (
-        <div style={{
-          position: "fixed", top: 0, left: 0,
-          background: "red", color: "white",
-          padding: "10px", zIndex: 9999,
-          fontSize: "14px",
-        }}>
-          State: {callState} | From: {callInfo?.from} | To: {callInfo?.to}
-        </div>
-      )}
       <CallScreen
         callState={callState}
         callInfo={callInfo}
@@ -193,6 +250,7 @@ console.log("callState:", callState, "callInfo:", callInfo);
         isMuted={isMuted}
         isCamOff={isCamOff}
         isSharing={isSharing}
+        isSpeaker={isSpeaker}
         username={username}
         onAnswer={answerCall}
         onReject={rejectCall}
@@ -200,6 +258,7 @@ console.log("callState:", callState, "callInfo:", callInfo);
         onToggleMute={toggleMute}
         onToggleCamera={toggleCamera}
         onToggleScreenShare={toggleScreenShare}
+        onToggleSpeaker={toggleSpeaker}
       />
 
       {/* ── Toast notifications ── */}
@@ -229,17 +288,50 @@ console.log("callState:", callState, "callInfo:", callInfo);
 
           {/* Main panel — DM or Room */}
           {activeDM ? (
-            <DMPanel
-              withUser={activeDM}
-              messages={dmMessages}
-              dmTyping={dmTyping}
-              isOnline={onlineUsers.includes(activeDM)}
-              onSend={sendDM}
-              onTyping={emitDMTyping}
-              onClose={closeDM}
-              onVoiceCall={() => startCall(activeDM, "voice")}
-              onVideoCall={() => startCall(activeDM, "video")}
-            />
+            <div className="flex-1 flex flex-col overflow-hidden">
+              <DMPanel
+                withUser={activeDM}
+                messages={dmMessages}
+                dmTyping={dmTyping}
+                isOnline={onlineUsers.includes(activeDM)}
+
+                onSend={(text, file, audio) => {
+                  const reply = dmReplyTo;
+                  if (!text.trim() && !file && !audio) return;
+
+                  console.log("DMPanel onSend, dmReplyTo:", dmReplyTo);
+                  sendDM(text ?? "", file, audio, reply ?? undefined);
+                  setDMReplyTo(null);
+                }}
+                onTyping={emitDMTyping}
+                onClose={closeDM}
+
+                onReact={(messageId, emoji) => 
+                  socket?.emit("add_dm_reaction", {
+                    messageId,
+                    emoji,
+                    username,
+                    to: activeDM,
+                  })
+                }
+                onVoiceCall={() => startCall(activeDM, "voice")}
+                onVideoCall={() => startCall(activeDM, "video")}
+                onSeen={(ids) => markDMSeen(ids)}
+                onReply={(msg) => {
+                  console.log("DM reply set:", msg);
+                  setDMReplyTo(msg)
+                }}
+                onForward={handleForward}
+                onlineUsers={onlineUsers}
+                rooms={rooms}
+                replyTo={dmReplyTo ?? undefined}
+                onCancelReply={() => setDMReplyTo(null)}
+
+                forwardMsg={forwardData ?? undefined}
+                onCancelForward={() => setForwardData(null)}
+                onForwardSend={(text, fromUsername, caption) => sendForward(caption)}
+              />
+            </div>
           ) : (
             <div className="flex-1 flex flex-col overflow-hidden">
 
@@ -282,13 +374,34 @@ console.log("callState:", callState, "callInfo:", callInfo);
                 currentRoom={currentRoom}
                 currentUsername={username}
                 onReact={(messageId, emoji) => addReaction(messageId, emoji, currentRoom)}
-              />
-
+                onSeen={(ids) => markRoomSeen(ids)}
+                onReply={(msg) => setReplyTo(msg)}
+                onForward={handleForward}
+                onlineUsers={onlineUsers}
+                rooms={rooms}
+              />       
+              {forwardData && (
+                <ForwardBar
+                  text={forwardData.text}
+                  fromUsername={forwardData.fromUsername}
+                  onSend={sendForward}
+                  onCancel={cancelForward}
+                />
+              )}
               {/* Input */}
               <InputBar
                 currentRoom={currentRoom}
-                onSend={(text, file, audio)=> sendMessage(text, file, audio)}
+                onSend={(text, file, audio) => {
+                  sendMessage(text ?? "", file, audio, replyTo ?? undefined);
+                  setReplyTo(null);
+                }}
                 onTyping={emitTyping}
+                replyTo={replyTo ?? undefined}
+                onCancelReply={() => setReplyTo(null)}
+
+                forwardMsg={forwardData ?? undefined}
+                onCancelForward={() => setForwardData(null)}
+                onForwardSend={(text, fromUsername, caption) => sendForward(caption)}
               />
             </div>
           )}

@@ -76,7 +76,7 @@ seedRooms();
         originalName: req.file.originalname,
         mimetype:     req.file.mimetype,
         isImage,
-        isAudio,      // ← new
+        isAudio,      // new
       });
     } catch (err: any) {
       console.error("Cloudinary upload error:", err?.message ?? err);
@@ -109,7 +109,7 @@ io.on("connection", (socket) => {
     io.to(reciptientId).emit("incoming_call", { from, type, callId, offer });
   });
 
-  // 2. REciptient answer
+  // 2. Reciptient answer
   socket.on("call_answer", ({ to, callId, answer}: {
     to: string;
     callId: string;
@@ -144,7 +144,7 @@ io.on("connection", (socket) => {
   });
 
   // 5. Reject call
-  socket.on("reject_call", ({toString, callId} : {
+  socket.on("reject_call", ({to, callId} : {
     to: string; callId: string;
   }) => {
     const targetId = getSocketId(to);
@@ -153,7 +153,36 @@ io.on("connection", (socket) => {
     }
   });
   // ========================================================================
+  // Message delivery and seen
+  // When reciptient receives a message - mark as delivered
+  socket.on("message_delivered", ({messageId, to} : {
+    messageId: string;
+    to: string;
+  }) => {
+    const senderSocketId = getSocketId(to);
+    if (senderSocketId) {
+      io.to(senderSocketId).emit("message_delivered", { messageId });
+    }
+  });
 
+  // when reciptient opens/reads messages - mark as seen
+  socket.on("messages_seen", ({ messageIds, to, roomId} : {
+    messageIds: string[];
+    to?: string;
+    roomId?: string;
+  }) => {
+    if (to) {
+      // DM seen
+      const senderSocketId = getSocketId(to);
+      if (senderSocketId) {
+        io.to(senderSocketId).emit("messages_seen", { messageIds });
+      }
+    } else if (roomId) {
+      // Room seen - broadcast to room
+      socket.to(roomId).emit("messages_seen", { messageIds });
+    }
+  });
+  // ========================================================================
   // ── Register ───────────────────────────────────────────
   socket.on("register_user", async (username: string) => {
     if (!username) return;
@@ -249,16 +278,23 @@ io.on("connection", (socket) => {
   });
 
   // ── Messages ───────────────────────────────────────────
-  socket.on("send_message", async ({ text, username, roomId, fileUrl, fileName, fileType, isImage, audioUrl, audioDuration }: {
+  socket.on("send_message", async ({ 
+    text, username, roomId, tempId,
+    fileUrl, fileName, fileType, isImage, 
+    audioUrl, audioDuration, replyTo, forwarded
+  }: {
     text:           string;
     username:       string;
     roomId:         string;
+    tempId?:        string; // for client-side tracking
     fileUrl?:       string;
     fileName?:      string;
     fileType?:      string;
     isImage?:       boolean;
-    audioUrl?:      string;   // ← new
-    audioDuration?: number;   // ← new
+    audioUrl?:      string;   // 
+    audioDuration?: number;   // 
+    replyTo?: { _id: string; username: string; text: string };
+    forwarded?: boolean;
   }) => {
     if (!text && !fileUrl && !audioUrl) return;
     if (!username || !roomId) return;
@@ -271,13 +307,16 @@ io.on("connection", (socket) => {
       fileName,
       fileType,
       isImage,
-      audioUrl,      // ← new
-      audioDuration, // ← new
+      audioUrl,      // 
+      audioDuration, // 
+      replyTo,
+      forwarded,
     });
 
     io.to(roomId).emit("receive_message", {
-      _id:           saved._id,
-      text:          text || "",
+      _id: saved._id,
+      tempId, // echo back tempId for client to reconcile
+      text: text || "",
       username,
       roomId,
       fileUrl,
@@ -286,10 +325,78 @@ io.on("connection", (socket) => {
       isImage,
       audioUrl,      // ← new
       audioDuration, // ← new
+      replyTo,
+      forwarded,
       time: new Date(saved.createdAt).toLocaleTimeString([], {
         hour: "2-digit", minute: "2-digit",
       }),
     });
+  });
+
+  // ── Reactions ──────────────────────────────────────────
+  socket.on("add_reaction", async ({ messageId, emoji, username, roomId }: {
+    messageId: string;
+    emoji: string;
+    username: string;
+    roomId: string;
+  }) => {
+    if (!messageId || !emoji || !username || !roomId) return;
+
+    const message = await Message.findById(messageId);
+    if (!message) return;
+
+    if (!message.reactions) message.reactions = [];
+
+    // Detect if uer already clicked SAME emoji (toggle case)
+
+    const alreadyReacted = message.reactions.find(
+        (r: any) => r.emoji === emoji && r.usernames.includes(username)
+      );
+    
+      // Remove user from all reactions (very important)
+      message.reactions.forEach((r: any) => {
+        r.usernames = r.usernames.filter((u: string) => u !== username);
+        r.count = r.usernames.length;
+      });
+
+      // Remove empty reaction
+      message.reactions = message.reactions.filter(
+        (r: any) => r.count > 0
+      );
+
+      // If same emoji -> stop (toggle off)
+      if (alreadyReacted) {
+        message.markModified("reactions");
+        await message.save();
+
+        io.to(roomId).emit("message_reaction_update", {
+          messageId,
+          reactions: message.reactions,
+        });
+        return;
+      }
+
+      // Add new reaction
+      const existing = message.reactions.find((r: any) => r.emoji === emoji);
+
+      if (existing) {
+        existing.usernames.push(username);
+        existing.count = existing.usernames.length;
+      } else {
+        message.reactions.push({
+          emoji,
+          usernames: [username],
+          count: 1,
+        });
+      }
+
+      message.markModified("reactions");
+      await message.save();
+
+      io.to(roomId).emit("message_reaction_updated", {
+        messageId,
+        reactions: message.reactions
+      });
   });
 
   // ── Direct Messages ────────────────────────────────────
@@ -312,39 +419,97 @@ io.on("connection", (socket) => {
     });
   });
 
-  socket.on("dm_send", async ({ from, to, text}: {
-    from: string;
-    to: string;
-    text: string;
+  socket.on("dm_send", async ({
+    from,
+    to,
+    text,
+    tempId,    // pass back for client-side tracking
+    fileUrl,
+    fileName,
+    fileType,
+    isImage,
+    audioUrl,
+    audioDuration,
+    replyTo,
+    forwarded,
+    caption,
+    fromUsername,
+
+  }: {
+    from:      string;
+    to:        string;
+    text:      string;
+    tempId?:   string;   // add this
+
+    fileUrl?:  string;
+    fileName?: string;
+    fileType?: string;
+    isImage?:  boolean;
+
+    audioUrl?: string;
+    audioDuration?: number;
+
+    replyTo?: { _id: string; username: string; text: string };
+    forwarded?: boolean;
+    caption?: string;
+    fromUsername?: string;
   }) => {
-    if (!from || !to || !text) return;
+    if (!from || !to || (!text && !fileUrl && !audioUrl)) return;
 
-    const saved = await DirectMessage.create({ from, to, text});
-
-    const playload = {
-      _id: saved._id,
+    const saved = await DirectMessage.create({
       from,
-      to, 
+      to,
+      text:     text || "",
+
+      fileUrl,
+      fileName,
+      fileType,
+      isImage,
+
+      audioUrl,
+      audioDuration,
+
+      replyTo,
+      forwarded,
+      caption,
+      fromUsername
+    });
+
+    const payload = {    // ← fixed typo "playload" → "payload"
+      _id:  saved._id,
+      tempId,
+      from,
+      to,
       text,
+      fileUrl,
+      fileName,
+      fileType,
+      isImage,
+
+      audioUrl,
+      audioDuration,
+
+      replyTo,
+      forwarded,
+      caption,
+      fromUsername,
       time: new Date(saved.createdAt).toLocaleTimeString([], {
-        hour: "2-digit", minute: "2-digit",
+          hour: "2-digit", minute: "2-digit",
       }),
     };
 
     // Send to recipient if online
-    const recipientSocketId  = Array.from(onlineUsers.entries())
+    const recipientSocketId = Array.from(onlineUsers.entries())
       .find(([, name]) => name === to)?.[0];
 
-      if (recipientSocketId ) {
-        io.to(recipientSocketId).emit("dm_recieve", playload);
-      }
-
-      // Confirm back to sener
-      socket.emit("dm_send", playload);
+    if (recipientSocketId) {
+      io.to(recipientSocketId).emit("dm_receive", payload); // ← fix typo "dm_recieve"
+    }
+    
+    // Confirm back to sender
+    socket.emit("dm_sent", payload); // ← fix "dm_send" → "dm_sent"
   });
-
-
-
+  
   socket.on("dm_typing", ({ from, to}: { from: string; to: string}) => {
     const recipientSocketId = Array.from(onlineUsers.entries())
       .find(([, name]) => name === to)?.[0];
@@ -352,6 +517,7 @@ io.on("connection", (socket) => {
       io.to(recipientSocketId).emit("dm_user_typing", from);
     }
   });
+
 
   socket.on("dm_stop_typing", ({from, to}: { from: string; to: string}) => {
     const recipientSocketId = Array.from(onlineUsers.entries())
@@ -361,44 +527,64 @@ io.on("connection", (socket) => {
     }
   });
 
-  // ── Reactions ──────────────────────────────────────────
-  socket.on("add_reaction", async ({ messageId, emoji, username, roomId }: {
-    messageId: string;
-    emoji: string;
-    username: string;
-    roomId: string;
+  // add reaction in dm room
+  socket.on("add_dm_reaction", async({
+    messageId,
+    emoji,
+    username,
+    to,
   }) => {
-    if (!messageId || !emoji || !username || !roomId) return;
-
-    const message = await Message.findById(messageId);
-    if (!message) return;
+    const message = await DirectMessage.findById(messageId);
+    if(!message) return;
 
     if (!message.reactions) message.reactions = [];
 
-    const existing = message.reactions.find((r: any) => r.emoji === emoji);
+    // Check toggle
+    const alreadyReacted = message.reactions.find(
+      (r) => r.emoji === emoji && r.usernames.includes(username)
+    );
 
-    if (existing) {
-      const alreadyReacted = existing.usernames.includes(username);
-      if (alreadyReacted) {
-        existing.usernames = existing.usernames.filter((u: string) => u !== username);
-        existing.count = existing.usernames.length;
-        message.reactions = message.reactions.filter((r: any) => r.count > 0);
-      } else {
-        existing.usernames.push(username);
-        existing.count += 1;
-      }
+    // Remove user from all emojis
+    message.reactions.forEach((r) => {
+      r.usernames = r.usernames.filter((u) => u !== username);
+      r.count = r.usernames.length;
+    });
+
+    // Remove empty reactions
+    message.reactions = message.reactions.filter(r => r.count > 0);
+
+    // toggle off
+    if (alreadyReacted) {
+      await message.save();
     } else {
-      message.reactions.push({ emoji, count: 1, usernames: [username] });
+      const existing = message.reactions.find(r => r.emoji === emoji);
+      if (existing) {
+        existing.usernames.push(username);
+        existing.count = existing.usernames.length;
+      } else {
+        message.reactions.push({
+          emoji,
+          usernames: [username],
+          count: 1,
+        });
+      }
+      await message.save();
     }
 
-    message.markModified("reactions");
-    await message.save();
+    const playload = {
+      messageId,
+      reactions: message.reactions,
+    };
 
-    //  Fix 1 & 2: correct event name and property name
-    //  Fix 3: send to sender + everyone else in room
-    const payload = { messageId, reactions: message.reactions };
-    socket.emit("message_reaction_updated", payload);        // ← sender
-    socket.to(roomId).emit("message_reaction_updated", payload); // ← others
+    const recipientSocketId = 
+      Array.from(onlineUsers.entries()).find(([, name]) => name === to)?.[0];
+    
+    // Send to both users
+    socket.emit("dm_reaction_updated", playload);
+
+    if (recipientSocketId) {
+      io.to(recipientSocketId).emit("dm_reaction_updated", playload);
+    }
   });
 
   // ── Typing ─────────────────────────────────────────────

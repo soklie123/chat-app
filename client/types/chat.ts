@@ -4,6 +4,8 @@ export type Reaction = {
   usernames: string[];
 }
 
+export type MessageStatus = "sending" | "sent" | "delivered" | "seen";
+
 export type ChatMessage = {
   _id?: string;
   text: string;
@@ -26,6 +28,16 @@ export type ChatMessage = {
   callEvent?: "missed" | "ended" | "rejected";
   callType?: "voice" | "video";
   callDuration?: number; // seconds
+  status?: MessageStatus;
+
+  replyTo?: {
+    _id: string;
+    username: string;
+    text: string;
+  };
+  forwarded?: boolean;
+  fromUsername?: string; // for forwarded messages
+  caption?: string;      // for forwarded messages
 };
 
 export type TypingUser = {
@@ -39,6 +51,12 @@ export type DMMessage = {
   fromSelf: boolean;
   time: string;
   username: string;
+
+  reactions?: {
+    emoji: string;
+    count: number;
+    usernames: string[];
+  }[];
 
   // for image sent use cloudinary
   fileUrl?: string;
@@ -55,6 +73,16 @@ export type DMMessage = {
   callType?:     "voice" | "video";
   callDuration?: number;
 
+  status?: MessageStatus;
+
+  replyTo?: {
+    _id: string;
+    username: string;
+    text: string;
+  };
+  forwarded?: boolean;
+  caption?: string;
+  fromUsername?: string; // for forwarded messages
 };
 
 export type DMConversation = {

@@ -269,8 +269,8 @@ export default function Home() {
         onJoinRoom={handleJoinRoom}
       />
 
-      <div className="h-screen bg-[#d5e3eb] flex justify-center items-center">
-        <div className="w-[680px] h-[680px] bg-white rounded-[20px] flex overflow-hidden shadow-[0_12px_40px_rgba(0,0,0,0.18)]">
+      <div className="h-screen bg-[#1e2a35] flex overflow-hidden">
+  <div className="flex-1 flex overflow-hidden">
 
           {/* Sidebar */}
           <Sidebar
@@ -299,8 +299,18 @@ export default function Home() {
                   const reply = dmReplyTo;
                   if (!text.trim() && !file && !audio) return;
 
+                  const normalizedAudio = audio
+                    ? {
+                        ...audio,
+                        audioDuration:
+                          typeof audio.audioDuration === "string"
+                            ? Number(audio.audioDuration)
+                            : audio.audioDuration,
+                      }
+                    : undefined;
+
                   console.log("DMPanel onSend, dmReplyTo:", dmReplyTo);
-                  sendDM(text ?? "", file, audio, reply ?? undefined);
+                  sendDM(text ?? "", file, normalizedAudio, reply ?? undefined);
                   setDMReplyTo(null);
                 }}
                 onTyping={emitDMTyping}

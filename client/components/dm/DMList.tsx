@@ -1,5 +1,5 @@
-import { DMConversation } from "../types/chat";
-import Avatar from "./Avatar";
+import { DMConversation } from "../../types/chat";
+import Avatar from "../shared/Avatar";
 
 export default function DMList({
   conversations,

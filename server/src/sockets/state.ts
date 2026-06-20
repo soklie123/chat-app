@@ -5,7 +5,7 @@ import { Room } from "../models/Room";
 export const onlineUsers = new Map<string, string>(); // socketId → username
 export const rooms = new Map<string, Set<string>>(); // roomId → Set<username>
 
-export const DEFAULT_ROOMS = ["general", "random", "tech"];
+export const DEFAULT_ROOMS = ["general"];
 
 // Seed default rooms on startup
 export async function seedRooms() {

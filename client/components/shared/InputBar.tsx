@@ -1,8 +1,8 @@
 import { useState, useRef } from "react";
 import axios from "axios";
 import FilePreview from "./FilePreview";
-import { useVoiceRecorder } from "../hooks/useVoiceRecorder";
-import ReplyBar from "./ReplyBar";
+import useVoiceRecorder from "../../hooks/useVoiceRecorder";
+import ReplyBar from "../chat/ReplyBar";
 
 const UPLOAD_URL = "http://localhost:4000/upload";
 

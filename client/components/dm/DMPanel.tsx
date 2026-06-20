@@ -1,17 +1,17 @@
 import { useState, useEffect, useRef } from "react";
-import { DMMessage } from "../types/chat";
-import Avatar from "./Avatar";
-import TypingDots from "./TypingDots";
-import FilePreview from "./FilePreview";
+import { DMMessage } from "../../types/chat";
+import Avatar from "../shared/Avatar";
+import TypingDots from "../shared/TypingDots";
+import FilePreview from "../shared/FilePreview";
 import axios from "axios";
 
 import { MdPhone, MdVideocam } from "react-icons/md";
-import CallEventBubble from "./CallEventBubble";
-import MessageStatusIcon from "./MessageStatus";
-import ReplyPreview from "./ReplyPreview";
-import ReplyBar from "./ReplyBar";
-import { MessageBubble } from "./MessageBubble";
-import { useVoiceRecorder } from "../hooks/useVoiceRecorder";
+import CallEventBubble from "../call/CallEventBubble";
+import MessageStatusIcon from "../chat/MessageStatus";
+import ReplyPreview from "../chat/Replypreview";
+import ReplyBar from "../chat/ReplyBar";
+import { MessageBubble } from "../chat/MessageBubble";
+import useVoiceRecorder from "../../hooks/useVoiceRecorder";
 
 const UPLOAD_URL = "http://localhost:4000/upload";
 

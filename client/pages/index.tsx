@@ -1,18 +1,17 @@
-
 import { useState, useRef, useEffect } from "react";
-import { useChat } from "../hooks/useChat";
 import { useDM } from "../hooks/useDM";
-import { useNotifications } from "../hooks/useNotifications";
 import { useCall } from "../hooks/useCall";
+import { useChat } from "../hooks/useChat";
+import { useNotifications } from "../hooks/useNotifications";
+import { useUnseenNotifications } from "../hooks/useUnseenNotifications";
 import NotificationBanner, { useToasts } from "../components/shared/NotificationBanner";
-import Avatar from "../components/shared/Avatar";
 import UsernameGate from "../components/shared/UsernameGate";
 import Sidebar from "../components/layout/Sidebar";
-import MessageList from "../components/chat/MessageList";
-import InputBar from "../components/shared/InputBar";
 import DMPanel from "../components/dm/DMPanel";
 import CallScreen from "../components/call/CallScreen";
-import ForwardBar from "../components/shared/ForwardBar";
+
+type ReplyDraft = { _id: string; username: string; text: string } | null;
+type ForwardDraft = { text: string; fromUsername: string } | null;
 
 export default function Home() {
   const [username, setUsername] = useState("");
@@ -20,18 +19,11 @@ export default function Home() {
   const {
     socket,
     connected,
-    messages,
     onlineUsers,
-    typingUser,
-    currentRoom,
+    allUsers,
     rooms,
-    sendMessage,
-    emitTyping,
-    joinRoom,
     createRoom,
-    addReaction,
     logout,
-    markRoomSeen,
   } = useChat(username);
 
   const {
@@ -46,198 +38,100 @@ export default function Home() {
     markDMSeen,
     addCallEventMessage,
   } = useDM(socket, username);
-  
-  const activeDMRef = useRef<string | null>(null);
 
+  const activeDMRef = useRef<string | null>(null);
   useEffect(() => {
     activeDMRef.current = activeDM;
   }, [activeDM]);
 
   const {
-    callState,
-    callInfo,
-    localStream,
-    remoteStream,
-    isMuted,
-    isCamOff,
-    isSharing,
-    isSpeaker,
-    startCall,
-    answerCall,
-    endCall,
-    rejectCall,
-    toggleMute,
-    toggleCamera,
-    toggleScreenShare,
-    toggleSpeaker,
+    callState, callInfo, localStream, remoteStream,
+    isMuted, isCamOff, isSharing, isSpeaker,
+    startCall, answerCall, endCall, rejectCall,
+    toggleMute, toggleCamera, toggleScreenShare, toggleSpeaker,
   } = useCall(socket, username, (event) => {
-    console.log("onCallEvent received:", event);
     const withUser = event.with || activeDMRef.current || "";
-
-    if (!withUser) {
-      console.warn("No withUser — call event lost");
-      return;
-    }
+    if (!withUser) return;
     addCallEventMessage(
       event.type,
       event.callType,
       withUser,
       event.duration,
-      event.type !== "missed",
+      event.type !== "missed"
     );
-
-    if (!activeDMRef.current) {
-      openDM(withUser);
-    }
+    if (!activeDMRef.current) openDM(withUser);
   });
 
-  const [replyTo, setReplyTo] = useState<{ 
-    _id: string; username: string; text: string 
-  } | null>(null);
-
-  const [forwardData, setForwardData] = useState<{
-    text: string;
-    fromUsername: string;
-  } | null>(null);
-
-  const cancelForward = () => setForwardData(null);
+  const [dmReplyTo, setDMReplyTo] = useState<ReplyDraft>(null);
+  const [forwardData, setForwardData] = useState<ForwardDraft>(null);
 
   const handleForward = (
     text: string,
     fromUsername: string,
     to: string,
-    isRoom: boolean
+    _isRoom: boolean
   ) => {
-    console.log("FORWARDING:", { text, fromUsername, to, isRoom });
-    if (isRoom) {
-      closeDM();
-      joinRoom(to);
-    } else {
-      openDM(to);
-    }
-
-    setTimeout(() => {
-      setForwardData({
-        text,
-        fromUsername,
-      });
-    }, 200);
+    openDM(to);
+    setTimeout(() => setForwardData({ text, fromUsername }), 200);
   };
 
   const sendForward = (caption: string) => {
     if (!forwardData) return;
-
-    if (activeDM) {
-      sendDM(
-        forwardData.text,
-        undefined,
-        undefined,
-        undefined,
-        true,
-        forwardData.fromUsername,
-        caption.trim()
-      );
-    } else {
-      sendMessage(
-        forwardData.text,
-        undefined,
-        undefined,
-        undefined,
-        true,
-        forwardData.fromUsername,
-        caption.trim()
-      );
-    }
+    sendDM(
+      forwardData.text,
+      undefined,
+      undefined,
+      undefined,
+      true,
+      forwardData.fromUsername,
+      caption.trim()
+    );
     setForwardData(null);
   };
 
-  const [dmReplyTo, setDMReplyTo] = useState<{ 
-    _id: string; username: string; text: string 
-  } | null>(null);
-
-  const { notifyMessage, notifyDM } = useNotifications(username);
+  const { notifyDM } = useNotifications(username);
   const { toasts, addToast, removeToast } = useToasts();
 
-  const [prevLen, setPrevLen] = useState(0);
+  useUnseenNotifications({
+    messages: [],
+    dmMessages,
+    conversations,
+    activeDM,
+    currentRoom: "",
+    notifyMessage: () => {},
+    notifyDM,
+    addToast,
+  });
 
-  if (messages.length > prevLen) {
-    const newMsg = messages[messages.length - 1];
-    if (newMsg && !newMsg.fromSelf) {
-      if (activeDM) {
-        notifyMessage(newMsg.username, newMsg.text);
-        addToast(newMsg.username, newMsg.text, false, currentRoom);
-      }
-    }
-    setPrevLen(messages.length);
-  }
-
-  const [prevDMLen, setPrevDMLen] = useState(0);
-  if (dmMessages.length > prevDMLen) {
-    const newDM = dmMessages[dmMessages.length - 1];
-    if (newDM && !newDM.fromSelf) {
-      notifyDM(newDM.username, newDM.text);
-    }
-    setPrevDMLen(dmMessages.length);
-  }
-
-  const [prevConvUnread, setPrevConvUnread ] = useState(0);
-  const totalUnread = conversations.reduce((s, c) => s + c.unread, 0);
-  if (totalUnread > prevConvUnread) {
-    const newConv = conversations.find((c) => c.unread > 0);
-    if (newConv) {
-      notifyDM(newConv.username, newConv.lastMessage);
-      addToast(newConv.username, newConv.lastMessage, true);
-    }
-  }
-  if (totalUnread !== prevConvUnread) setPrevConvUnread(totalUnread);
-
-  const handleLogout = () => {
-    logout();
-    setUsername("");
-  };
-
-  const handleOpenDM = (toUser: string) => {
-    console.log("Opening DM with", toUser);
-    openDM(toUser);
-  };
-
-  const handleJoinRoom = (roomId: string) => {
-    closeDM();
-    joinRoom(roomId);
-  };
-
-  // Telegram style creators
-  const handleCreateTelegramGroup = (name: string, members: string[]) => {
+  const handleCreateGroup = (name: string, members: string[]) => {
     createRoom(name);
     if (socket && members.length > 0) {
-      socket.emit("invite_to_group", { room: name, users: members });
+      // slight delay so room_created fires first
+      setTimeout(() => {
+        socket.emit("invite_to_group", { room: name, users: members });
+      }, 300);
     }
   };
 
-  const handleCreateTelegramChannel = (name: string) => {
-    createRoom(name);
-  };
-
-  if (!username) {
-    return <UsernameGate onJoin={setUsername} />;
-  }
+  if (!username) return <UsernameGate onJoin={setUsername} />;
 
   return (
     <>
       <style>{`
-        @keyframes bounce {
-          0%, 60%, 100% { transform: translateY(0); }
-          30% { transform: translateY(-5px); }
+        @keyframes tg-spin {
+          from { transform: rotate(0deg); }
+          to   { transform: rotate(360deg); }
         }
         @keyframes slide-in {
           from { transform: translateX(120%); opacity: 0; }
           to   { transform: translateX(0);    opacity: 1; }
         }
-        .animate-slide-in {
-          animation: slide-in 0.3s ease-out;
-        }
-      `}
-      </style>
+        .animate-slide-in { animation: slide-in 0.3s ease-out; }
+        *, *::before, *::after { box-sizing: border-box; }
+        body { margin: 0; padding: 0; }
+        input::placeholder { color: #6c7883; }
+      `}</style>
+
       <CallScreen
         callState={callState}
         callInfo={callInfo}
@@ -260,150 +154,118 @@ export default function Home() {
       <NotificationBanner
         toasts={toasts}
         onDismiss={removeToast}
-        onOpenDM={handleOpenDM}
-        onJoinRoom={handleJoinRoom}
+        onOpenDM={openDM}
+        onJoinRoom={() => {}}
       />
 
-      <div className="h-screen bg-[#1e2a35] flex overflow-hidden">
-        <div className="flex-1 flex overflow-hidden">
+      <div style={{
+        height: "100vh",
+        display: "flex",
+        overflow: "hidden",
+        background: "#0e1621",
+        fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+      }}>
+        <Sidebar
+          username={username}
+          onLogout={() => { logout(); setUsername(""); }}
+          onlineUsers={onlineUsers}
+          allUsers={allUsers}
+          conversations={conversations}
+          activeDM={activeDM}
+          onOpenDM={openDM}
+          onCreateGroup={handleCreateGroup}
+        />
 
-          {/* Sidebar */}
-          <Sidebar
-            username={username}
-            onLogout={handleLogout}
-            onlineUsers={onlineUsers}
-            conversations={conversations}
-            activeDM={activeDM}
-            onOpenDM={handleOpenDM}
-            onCreateGroup={handleCreateTelegramGroup}
-            onCreateChannel={handleCreateTelegramChannel}
-          />
-
-          {/* Main panel — DM or Room */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
           {activeDM ? (
-            <div className="flex-1 flex flex-col overflow-hidden">
-              <DMPanel
-                withUser={activeDM}
-                messages={dmMessages}
-                dmTyping={dmTyping}
-                isOnline={onlineUsers.includes(activeDM)}
-                onSend={(text, file, audio) => {
-                  const reply = dmReplyTo;
-                  if (!text.trim() && !file && !audio) return;
-
-                  const normalizedAudio = audio
-                    ? {
-                        ...audio,
-                        audioDuration:
-                          typeof audio.audioDuration === "string"
-                            ? Number(audio.audioDuration)
-                            : audio.audioDuration,
-                      }
-                    : undefined;
-
-                  console.log("DMPanel onSend, dmReplyTo:", dmReplyTo);
-                  sendDM(text ?? "", file, normalizedAudio, reply ?? undefined);
-                  setDMReplyTo(null);
-                }}
-                onTyping={emitDMTyping}
-                onClose={closeDM}
-                onReact={(messageId, emoji) => 
-                  socket?.emit("add_dm_reaction", {
-                    messageId,
-                    emoji,
-                    username,
-                    to: activeDM,
-                  })
-                }
-                onVoiceCall={() => startCall(activeDM, "voice")}
-                onVideoCall={() => startCall(activeDM, "video")}
-                onSeen={(ids) => markDMSeen(ids)}
-                onReply={(msg) => {
-                  console.log("DM reply set:", msg);
-                  setDMReplyTo(msg);
-                }}
-                onForward={handleForward}
-                onlineUsers={onlineUsers}
-                rooms={rooms}
-                replyTo={dmReplyTo ?? undefined}
-                onCancelReply={() => setDMReplyTo(null)}
-                forwardMsg={forwardData ?? undefined}
-                onCancelForward={() => setForwardData(null)}
-                onForwardSend={(text, fromUsername, caption) => sendForward(caption)}
-              />
-            </div>
+            <DMPanel
+              currentUsername={username}
+              withUser={activeDM}
+              messages={dmMessages}
+              dmTyping={dmTyping}
+              isOnline={onlineUsers.includes(activeDM)}
+              onSend={(text, file, audio) => {
+                const reply = dmReplyTo;
+                if (!text.trim() && !file && !audio) return;
+                const normalizedAudio = audio
+                  ? {
+                      ...audio,
+                      audioDuration:
+                        typeof audio.audioDuration === "string"
+                          ? Number(audio.audioDuration)
+                          : audio.audioDuration,
+                    }
+                  : undefined;
+                sendDM(text ?? "", file, normalizedAudio, reply ?? undefined);
+                setDMReplyTo(null);
+              }}
+              onTyping={emitDMTyping}
+              onClose={closeDM}
+              onReact={(messageId, emoji) =>
+                socket?.emit("add_dm_reaction", {
+                  messageId,
+                  emoji,
+                  username,
+                  to: activeDM,
+                })
+              }
+              onVoiceCall={() => startCall(activeDM, "voice")}
+              onVideoCall={() => startCall(activeDM, "video")}
+              onSeen={(ids) => markDMSeen(ids)}
+              onReply={(msg) => setDMReplyTo(msg)}
+              onForward={handleForward}
+              onlineUsers={onlineUsers}
+              rooms={rooms}
+              replyTo={dmReplyTo ?? undefined}
+              onCancelReply={() => setDMReplyTo(null)}
+              forwardMsg={forwardData ?? undefined}
+              onCancelForward={() => setForwardData(null)}
+              onForwardSend={(_text, _from, caption) => sendForward(caption)}
+            />
           ) : (
-            <div className="flex-1 flex flex-col overflow-hidden">
-
-              {/* Header */}
-              <div className="bg-[#0088cc] px-4 py-3 flex items-center gap-3 flex-shrink-0">
-                <div className="flex-1 min-w-0">
-                  <div className="text-white font-medium text-[15px]"># {currentRoom}</div>
-                  <div className="flex items-center gap-1.5 mt-0.5">
-                    <span className="w-[7px] h-[7px] rounded-full flex-shrink-0"
-                      style={{ background: connected ? "#4ade80" : "#f44336" }} />
-                    <span className="text-[12px] text-white/75">
-                      {connected ? `${onlineUsers.length} online` : "offline"}
-                    </span>
-                  </div>
+            /* ── Empty state ── */
+            <div style={{
+              flex: 1,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "#0e1621",
+              gap: "16px",
+              userSelect: "none",
+            }}>
+              <div style={{
+                width: 88,
+                height: 88,
+                borderRadius: "50%",
+                background: "#17212b",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}>
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none"
+                  stroke="#5288c1" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                </svg>
+              </div>
+              <div style={{ textAlign: "center" }}>
+                <div style={{
+                  fontSize: "20px",
+                  fontWeight: 600,
+                  color: "#8b98a5",
+                  marginBottom: "8px",
+                }}>
+                  Select a chat
+                </div>
+                <div style={{
+                  fontSize: "13.5px",
+                  color: "#4a5568",
+                  maxWidth: "240px",
+                  lineHeight: 1.6,
+                }}>
+                  Choose a conversation from the sidebar to start messaging
                 </div>
               </div>
-
-              {/* Online users strip */}
-              {onlineUsers.length > 0 && (
-                <div className="px-3.5 py-2.5 border-b border-gray-200 bg-[#f7f9fb] flex items-center gap-4 overflow-x-auto flex-shrink-0">
-                  {onlineUsers.map((name) => (
-                    <button
-                      key={name}
-                      onClick={() => name !== username && handleOpenDM(name)}
-                      className="flex flex-col items-center gap-1 flex-shrink-0 group"
-                    >
-                      <Avatar name={name} size={34} ring />
-                      <span className="text-[10px] text-slate-500 group-hover:text-[#0088cc] transition-colors">
-                        {name}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {/* Messages */}
-              <MessageList
-                messages={messages}
-                typingUser={typingUser}
-                currentRoom={currentRoom}
-                currentUsername={username}
-                onReact={(messageId, emoji) => addReaction(messageId, emoji, currentRoom)}
-                onSeen={(ids) => markRoomSeen(ids)}
-                onReply={(msg) => setReplyTo(msg)}
-                onForward={handleForward}
-                onlineUsers={onlineUsers}
-                rooms={rooms}
-              />       
-              
-              {forwardData && (
-                <ForwardBar
-                  text={forwardData.text}
-                  fromUsername={forwardData.fromUsername}
-                  onSend={sendForward}
-                  onCancel={cancelForward}
-                />
-              )}
-
-              {/* Input */}
-              <InputBar
-                currentRoom={currentRoom}
-                onSend={(text, file, audio) => {
-                  sendMessage(text ?? "", file, audio, replyTo ?? undefined);
-                  setReplyTo(null);
-                }}
-                onTyping={emitTyping}
-                replyTo={replyTo ?? undefined}
-                onCancelReply={() => setReplyTo(null)}
-                forwardMsg={forwardData ?? undefined}
-                onCancelForward={() => setForwardData(null)}
-                onForwardSend={(text, fromUsername, caption) => sendForward(caption)}
-              />
             </div>
           )}
         </div>
@@ -411,4 +273,3 @@ export default function Home() {
     </>
   );
 }
-

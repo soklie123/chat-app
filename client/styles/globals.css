@@ -1,5 +1,77 @@
 @import "tailwindcss";
 
+/*
+  Tailwind v4 note: v4 does NOT read tailwind.config.js automatically.
+  All custom colors/radius/animations that used to live in
+  tailwind.config.js's theme.extend are now defined here, inline, using
+  the @theme directive. This is the v4-native way to do it.
+
+  @source lines force Tailwind to scan these folders for class names,
+  in case automatic detection misses anything in this project layout.
+  Adjust the relative paths if your folder names differ.
+*/
+@source "./pages/**/*.{js,ts,jsx,tsx}";
+@source "./components/**/*.{js,ts,jsx,tsx}";
+@source "./hooks/**/*.{js,ts,jsx,tsx}";
+
+@theme {
+  --color-base: #0B0F14;
+  --color-base-raised: #12171D;
+  --color-base-surface: #171D24;
+  --color-base-border: #232B33;
+
+  --color-bubble-sent: #1F4B5C;
+  --color-bubble-sentHover: #26586B;
+  --color-bubble-received: #1C232B;
+
+  --color-accent: #5B8DEF;
+  --color-accent-hover: #4A7BDB;
+  --color-accent-muted: #5B8DEF20;
+
+  --color-presence-online: #3DDC97;
+  --color-presence-away: #E8B339;
+
+  --color-danger: #E55A5A;
+
+  --color-ink: #E7ECF1;
+  --color-ink-muted: #8B97A3;
+  --color-ink-faint: #5C6671;
+
+  --radius-bubble: 1.1rem;
+
+  --shadow-panel: 0 1px 0 0 rgba(255,255,255,0.03) inset;
+  --shadow-floating: 0 8px 30px rgba(0,0,0,0.35);
+
+  --font-sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+@keyframes breathe {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(61,220,151,0.55); }
+  50%      { box-shadow: 0 0 0 4px rgba(61,220,151,0); }
+}
+@keyframes wave {
+  0%, 60%, 100% { transform: translateY(0); }
+  30%           { transform: translateY(-3px); }
+}
+@keyframes slideUp {
+  0%   { opacity: 0; transform: translateY(6px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+@keyframes popIn {
+  0%   { opacity: 0; transform: scale(0.92); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes slide-in {
+  from { transform: translateX(120%); opacity: 0; }
+  to   { transform: translateX(0); opacity: 1; }
+}
+
+.animate-breathe   { animation: breathe 2.4s ease-in-out infinite; }
+.animate-wave       { animation: wave 1.2s ease-in-out infinite; }
+.animate-slideUp    { animation: slideUp 0.18s ease-out; }
+.animate-popIn      { animation: popIn 0.12s ease-out; }
+.animate-slide-in    { animation: slide-in 0.3s ease-out; }
+
 html,
 body {
   min-height: 100%;
@@ -21,11 +93,14 @@ a {
   text-decoration: none;
 }
 
-@keyframes slide-in {
-  from { transform: translateX(120%); opacity: 0; }
-  to   { transform: translateX(0); opacity: 1; }
+/* Thin dark scrollbar used across MessageList / DMPanel */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
 }
-
-.animate-slide-in {
-  animation: slide-in 0.3s ease-out;
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: #232B33;
+  border-radius: 999px;
 }

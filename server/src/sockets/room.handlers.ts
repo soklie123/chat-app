@@ -2,9 +2,10 @@ import { Server, Socket } from "socket.io";
 import { Message } from "../models/Message";
 import { Room } from "../models/Room";
 import { User } from "../models/User";
-import { onlineUsers, rooms, broadcastRoomList } from "./state";
+import { onlineUsers, rooms, broadcastRoomList, getSocketId } from "./state";
 
 export function registerRoomHandlers(io: Server, socket: Socket) {
+
   // ── Register ───────────────────────────────────────────
   socket.on("register_user", async (username: string) => {
     if (!username) return;
@@ -18,6 +19,11 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
     );
 
     io.emit("online_users", Array.from(onlineUsers.values()));
+
+    // Emit ALL registered users (for sidebar — online + offline)
+    const allUsers = await User.find({}, "username").lean();
+    io.emit("all_users", allUsers.map(u => u.username));
+
     await broadcastRoomList(io);
   });
 
@@ -29,15 +35,19 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
     }
     onlineUsers.delete(socket.id);
     io.emit("online_users", Array.from(onlineUsers.values()));
+
+    // Re-emit all users so sidebar stays accurate
+    const allUsers = await User.find({}, "username").lean();
+    io.emit("all_users", allUsers.map(u => u.username));
+
     await broadcastRoomList(io);
   });
 
-  // ── Rooms ──────────────────────────────────────────────
+  // ── Join room (kept for group chat) ───────────────────
   socket.on("join_room", async (roomId: string) => {
     const username = onlineUsers.get(socket.id);
     if (!username || !roomId) return;
 
-    // Leave all previous rooms
     Array.from(socket.rooms).forEach((r) => {
       if (r !== socket.id) {
         socket.leave(r);
@@ -49,7 +59,6 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
     socket.join(roomId);
     rooms.get(roomId)!.add(username);
 
-    // Send last 30 messages from MongoDB
     const messages = await Message.find({ room: roomId })
       .sort({ createdAt: -1 })
       .limit(30);
@@ -60,12 +69,11 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
     });
 
     socket.emit("joined_room", roomId);
-    socket.to(roomId).emit("user_joined_room", { username, roomId });
-
     io.emit("online_users", Array.from(onlineUsers.values()));
     await broadcastRoomList(io);
   });
 
+  // ── Create group ───────────────────────────────────────
   socket.on("create_room", async (roomName: string) => {
     const username = onlineUsers.get(socket.id);
     if (!username || !roomName) return;
@@ -79,26 +87,60 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
     }
 
     await Room.create({ name: roomId, createdBy: username });
-    rooms.set(roomId, new Set());
+    rooms.set(roomId, new Set([username]));
     await broadcastRoomList(io);
+
+    // Notify the creator
     socket.emit("room_created", roomId);
   });
 
-  // ── Pagination ──────────────────────────────────────────
-  socket.on(
-    "load_older_messages",
-    async ({ room, before }: { room: string; before: string | Date }) => {
-      const older = await Message.find({
-        room,
-        createdAt: { $lt: new Date(before) },
-      })
-        .sort({ createdAt: -1 })
-        .limit(30);
+  // ── Invite members to group ────────────────────────────
+  socket.on("invite_to_group", async ({ room, users }: { room: string; users: string[] }) => {
+    const invitedBy = onlineUsers.get(socket.id);
+    if (!invitedBy || !room || !users?.length) return;
 
-      socket.emit("older_messages", {
-        messages: older.reverse(),
-        hasMore: older.length === 30,
-      });
+    const roomId = room.toLowerCase().replace(/\s+/g, "-");
+
+    for (const targetUsername of users) {
+      // Add to room member set
+      if (!rooms.has(roomId)) rooms.set(roomId, new Set());
+      rooms.get(roomId)!.add(targetUsername);
+
+      // Save invited user to Room model if you track members
+      await Room.findOneAndUpdate(
+        { name: roomId },
+        { $addToSet: { members: targetUsername } }
+      );
+
+      // Notify invited user if online
+      const targetSocketId = getSocketId(targetUsername);
+      if (targetSocketId) {
+        io.to(targetSocketId).emit("invited_to_group", {
+          groupName: roomId,
+          invitedBy,
+        });
+      }
     }
-  );
+
+    // Also notify creator so their member list updates
+    socket.emit("group_members_updated", {
+      groupName: roomId,
+      members: Array.from(rooms.get(roomId) ?? []),
+    });
+  });
+
+  // ── Pagination ─────────────────────────────────────────
+  socket.on("load_older_messages", async ({ room, before }: { room: string; before: string | Date }) => {
+    const older = await Message.find({
+      room,
+      createdAt: { $lt: new Date(before) },
+    })
+      .sort({ createdAt: -1 })
+      .limit(30);
+
+    socket.emit("older_messages", {
+      messages: older.reverse(),
+      hasMore: older.length === 30,
+    });
+  });
 }

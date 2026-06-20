@@ -3,10 +3,10 @@ import { Socket } from "socket.io-client";
 import { DMMessage, DMConversation, MessageStatus } from "../types/chat";
 
 export function useDM(socket: Socket | null, username: string) {
-  const [activeDM, setActiveDM]           = useState<string | null>(null);
-  const [dmMessages, setDmMessages]       = useState<DMMessage[]>([]);
+  const [activeDM, setActiveDM] = useState<string | null>(null);
+  const [dmMessages, setDmMessages] = useState<DMMessage[]>([]);
   const [conversations, setConversations] = useState<DMConversation[]>([]);
-  const [dmTyping, setDmTyping]           = useState<string | null>(null);
+  const [dmTyping, setDmTyping] = useState<string | null>(null);
 
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeDMRef = useRef<string | null>(null);
@@ -16,10 +16,11 @@ export function useDM(socket: Socket | null, username: string) {
   }, [activeDM]);
 
   const updateConversation = (
-    withUser:   string,
+    withUser: string,
     lastMessage: string,
-    time:       string,
-    addUnread:  boolean
+    time: string,
+    addUnread: boolean,
+    isGroup?: boolean
   ) => {
     setConversations((prev) => {
       const existing = prev.find((c) => c.username === withUser);
@@ -30,96 +31,91 @@ export function useDM(socket: Socket | null, username: string) {
             : c
         );
       }
-      return [...prev, { username: withUser, lastMessage, time, unread: addUnread ? 1 : 0 }];
+      return [...prev, {
+        username: withUser,
+        lastMessage,
+        time,
+        unread: addUnread ? 1 : 0,
+        isGroup: isGroup ?? false,
+      }];
     });
   };
 
   useEffect(() => {
     if (!socket) return;
 
-    // ── DM history ────────────────────────────────────────
-    socket.on("dm_history", ({ with: withUser, messages }: {
+    // DM history
+    socket.on("dm_history", ({ with: withUser, messages, isGroup }: {
       with: string;
+      isGroup?: boolean;
       messages: Array<{
-        _id:       string;
-        from:      string;
-        to:        string;
-        text:      string;
+        _id: string;
+        from: string;
+        to: string;
+        text: string;
         createdAt: string;
-
-        fileUrl?:  string;
+        fileUrl?: string;
         fileName?: string;
         fileType?: string;
-        isImage?:  boolean;
-
+        isImage?: boolean;
         audioUrl?: string;
         audioDuration?: number;
-
-        replyTo?: {
-          _id: string;
-          username: string;
-          text: string;
-        };
-
+        replyTo?: { _id: string; username: string; text: string };
         forwarded?: boolean;
-
-        reactions?: {
-            emoji: string;
-            count: number;
-            usernames: string[];
-          }[];
+        reactions?: { emoji: string; count: number; usernames: string[] }[];
       }>;
     }) => {
       setDmMessages(
         messages.map((m) => ({
-          _id:      m._id,
-          text:     m.text,
+          _id: m._id,
+          text: m.text,
           fromSelf: m.from === username,
-          time:     new Date(m.createdAt).toLocaleTimeString([], {
+          time: new Date(m.createdAt).toLocaleTimeString([], {
             hour: "2-digit", minute: "2-digit",
           }),
-
-          username:  m.from,
-
-          fileUrl:   m.fileUrl,
-          fileName:  m.fileName,
-          fileType:  m.fileType,
-          isImage:   m.isImage,
-
+          username: m.from,
+          fileUrl: m.fileUrl,
+          fileName: m.fileName,
+          fileType: m.fileType,
+          isImage: m.isImage,
           audioUrl: m.audioUrl,
           audioDuration: m.audioDuration,
-
           replyTo: m.replyTo,
           forwarded: m.forwarded,
-
           reactions: m.reactions ?? [],
-
-          status:    "seen" as MessageStatus, // history always seen
+          status: "seen" as MessageStatus,
         }))
       );
+
+      // Mark this conversation as group if applicable
+      if (isGroup) {
+        setConversations(prev => prev.map(c =>
+          c.username === withUser ? { ...c, isGroup: true } : c
+        ));
+      }
     });
 
-    // ── Receive DM ────────────────────────────────────────
+    // Receive DM
     socket.on("dm_receive", (data: {
       _id: string;
       from: string;
       text: string;
       time: string;
-
       fileUrl?: string;
       fileName?: string;
       fileType?: string;
       isImage?: boolean;
-
       audioUrl?: string;
       audioDuration?: number;
-
       replyTo?: { _id: string; username: string; text: string };
       forwarded?: boolean;
       caption?: string;
-      fromUsername?: string; // for forwarded messages
+      fromUsername?: string;
+      isGroup?: boolean;
+      groupName?: string;
     }) => {
-      const isOpen = activeDMRef.current === data.from;
+      const isOpen = activeDMRef.current === data.from ||
+        (data.isGroup && activeDMRef.current === data.groupName);
 
       if (isOpen) {
         setDmMessages((prev) => [
@@ -130,91 +126,73 @@ export function useDM(socket: Socket | null, username: string) {
             fromSelf: false,
             time: data.time,
             username: data.from,
-
             fileUrl: data.fileUrl,
             fileName: data.fileName,
             fileType: data.fileType,
             isImage: data.isImage,
-
             audioUrl: data.audioUrl,
             audioDuration: data.audioDuration,
-
             replyTo: data.replyTo,
             forwarded: data.forwarded,
             caption: data.caption,
             fromUsername: data.fromUsername,
-
             status: "seen" as MessageStatus,
           },
         ]);
-
         socket.emit("messages_seen", {
           messageIds: [data._id],
           to: data.from,
         });
       } else {
+        const convKey = data.isGroup ? (data.groupName ?? data.from) : data.from;
         updateConversation(
-          data.from,
-          data.text
-            ? data.text
-            : data.audioUrl
-            ? "Voice message"
-            : "File",
+          convKey,
+          data.text ? data.text : data.audioUrl ? "🎤 Voice message" : "📎 File",
           data.time,
-          true
+          true,
+          data.isGroup
         );
       }
     });
 
-    // ── DM sent confirmed ─────────────────────────────────
+    // DM sent confirmed
     socket.on("dm_sent", (data: {
-      _id:    string;
+      _id: string;
       tempId?: string;
-      from:   string;
-      time:   string;
+      from: string;
+      time: string;
       forwarded?: boolean;
       caption?: string;
       fromUsername?: string;
-
-      replyTo?: {
-        _id: string;
-        username: string;
-        text: string;
-      };
-
+      replyTo?: { _id: string; username: string; text: string };
       audioUrl?: string;
       audioDuration?: number;
     }) => {
       setDmMessages((prev) =>
         prev.map((msg) =>
           msg._id === data.tempId
-            ? { 
-              ...msg, 
-              _id: data._id, 
-              status: "sent" as MessageStatus, 
-              forwarded: data.forwarded ?? msg.forwarded,
-              replyTo: data.replyTo ?? msg.replyTo,
-              audioUrl: data.audioUrl ?? msg.audioUrl,
-              audioDuration: data.audioDuration ?? msg.audioDuration,
-              caption: data.caption ?? msg.caption,
-              fromUsername: data.fromUsername ?? msg.fromUsername,
-            }
+            ? {
+                ...msg,
+                _id: data._id,
+                status: "sent" as MessageStatus,
+                forwarded: data.forwarded ?? msg.forwarded,
+                replyTo: data.replyTo ?? msg.replyTo,
+                audioUrl: data.audioUrl ?? msg.audioUrl,
+                audioDuration: data.audioDuration ?? msg.audioDuration,
+                caption: data.caption ?? msg.caption,
+                fromUsername: data.fromUsername ?? msg.fromUsername,
+              }
             : msg
         )
       );
     });
 
-    socket.on("dm_reaction_updated", ({ messageId, reactions}) => {
-      setDmMessages(prev => 
-        prev.map(msg => 
-          msg._id === messageId
-            ? { ...msg, reactions}
-            : msg
-        )
+    socket.on("dm_reaction_updated", ({ messageId, reactions }) => {
+      setDmMessages(prev =>
+        prev.map(msg => msg._id === messageId ? { ...msg, reactions } : msg)
       );
     });
 
-    // ── Delivered ─────────────────────────────────────────
     socket.on("message_delivered", ({ messageId }: { messageId: string }) => {
       setDmMessages((prev) =>
         prev.map((msg) =>
@@ -225,7 +203,6 @@ export function useDM(socket: Socket | null, username: string) {
       );
     });
 
-    // ── Seen ──────────────────────────────────────────────
     socket.on("messages_seen", ({ messageIds }: { messageIds: string[] }) => {
       setDmMessages((prev) =>
         prev.map((msg) =>
@@ -236,7 +213,6 @@ export function useDM(socket: Socket | null, username: string) {
       );
     });
 
-    // ── Typing ────────────────────────────────────────────
     socket.on("dm_user_typing", (from: string) => {
       if (from === activeDMRef.current) {
         setDmTyping(from);
@@ -247,18 +223,34 @@ export function useDM(socket: Socket | null, username: string) {
 
     socket.on("dm_user_stop_typing", () => setDmTyping(null));
 
+    // Group created — add to conversations
+    socket.on("room_created", (roomId: string) => {
+      updateConversation(roomId, "Group created", new Date().toLocaleTimeString([], {
+        hour: "2-digit", minute: "2-digit",
+      }), false, true);
+    });
+
+    // Invited to a group
+    socket.on("invited_to_group", ({ groupName }: { groupName: string }) => {
+      updateConversation(groupName, "You were added to the group", new Date().toLocaleTimeString([], {
+        hour: "2-digit", minute: "2-digit",
+      }), true, true);
+    });
+
     return () => {
       socket.off("dm_history");
       socket.off("dm_receive");
       socket.off("dm_sent");
+      socket.off("dm_reaction_updated");
       socket.off("message_delivered");
       socket.off("messages_seen");
       socket.off("dm_user_typing");
       socket.off("dm_user_stop_typing");
+      socket.off("room_created");
+      socket.off("invited_to_group");
     };
   }, [socket, username]);
 
-  // ── Open DM ───────────────────────────────────────────
   const openDM = (toUser: string) => {
     if (!socket || toUser === username) return;
     activeDMRef.current = toUser;
@@ -271,7 +263,6 @@ export function useDM(socket: Socket | null, username: string) {
     socket.emit("dm_open", { from: username, to: toUser });
   };
 
-  // ── Close DM ──────────────────────────────────────────
   const closeDM = () => {
     activeDMRef.current = null;
     setActiveDM(null);
@@ -279,40 +270,18 @@ export function useDM(socket: Socket | null, username: string) {
     setDmTyping(null);
   };
 
-  // ── Send DM ───────────────────────────────────────────
   const sendDM = (
-    text: string, 
-    file?: {
-      fileUrl: string; 
-      fileName: string; 
-      fileType: string; 
-      isImage: boolean; 
-    }, 
-    audio?: {
-      audioUrl: string;
-      audioDuration: number;
-    },
-    replyTo?: { 
-      _id: string; 
-      username: string; 
-      text: string;
-    },
-
+    text: string,
+    file?: { fileUrl: string; fileName: string; fileType: string; isImage: boolean },
+    audio?: { audioUrl: string; audioDuration: number },
+    replyTo?: { _id: string; username: string; text: string },
     forwarded?: boolean,
-
-    fromUsername?: string, // for forwarded messages
-    caption?: string,      // for forwarded messages
-
+    fromUsername?: string,
+    caption?: string,
   ) => {
-    if (
-      !socket || 
-      !activeDM || 
-      (!text.trim() && !file && !audio)
-    ) return;
+    if (!socket || !activeDM || (!text.trim() && !file && !audio)) return;
 
-    const time   = new Date().toLocaleTimeString([], {
-      hour: "2-digit", minute: "2-digit",
-    });
+    const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     const tempId = `temp-${Date.now()}`;
 
     setDmMessages((prev) => [
@@ -324,90 +293,74 @@ export function useDM(socket: Socket | null, username: string) {
         time,
         username,
         status: "sending" as MessageStatus,
-
         replyTo,
         forwarded,
         fromUsername,
         caption,
-
         ...file,
         ...audio,
       },
     ]);
 
     updateConversation(
-      activeDM, text || (audio ? "🎤 Voice message" : "📎 File"),
-      time, false
+      activeDM,
+      text || (audio ? "🎤 Voice message" : "📎 File"),
+      time,
+      false
     );
 
     socket.emit("dm_send", {
       from: username,
-      to:   activeDM,
+      to: activeDM,
       text,
       tempId,
-
       replyTo,
       forwarded,
-      
       fromUsername,
       caption,
-
       ...file,
       ...audio,
     });
   };
 
-  // ── Typing ────────────────────────────────────────────
   const emitDMTyping = (value: string) => {
     if (!socket || !activeDMRef.current) return;
     if (value.length > 0) {
-      socket.emit("dm_typing",      { from: username, to: activeDMRef.current });
+      socket.emit("dm_typing", { from: username, to: activeDMRef.current });
     } else {
       socket.emit("dm_stop_typing", { from: username, to: activeDMRef.current });
     }
   };
 
-  // ── Mark seen ─────────────────────────────────────────
   const markDMSeen = (messageIds: string[]) => {
     if (!socket || !activeDMRef.current || messageIds.length === 0) return;
-    socket.emit("messages_seen", {
-      messageIds,
-      to: activeDMRef.current,
-    });
+    socket.emit("messages_seen", { messageIds, to: activeDMRef.current });
   };
 
-  // ── Call event message ────────────────────────────────
   const addCallEventMessage = (
-    event:    "missed" | "ended" | "rejected",
+    event: "missed" | "ended" | "rejected",
     callType: "voice" | "video",
     withUser: string,
     duration: number,
     fromSelf: boolean,
   ) => {
-    const time = new Date().toLocaleTimeString([], {
-      hour: "2-digit", minute: "2-digit",
-    });
-
+    const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     const msg: DMMessage = {
-      _id:          `call-${Date.now()}`,
-      text:         "",
+      _id: `call-${Date.now()}`,
+      text: "",
       fromSelf,
       time,
-      username:     fromSelf ? username : withUser,
-      callEvent:    event,
+      username: fromSelf ? username : withUser,
+      callEvent: event,
       callType,
       callDuration: duration,
     };
-
     setDmMessages((prev) => [...prev, msg]);
 
     const label = event === "ended"
       ? `${callType === "video" ? "📹" : "📞"} Call ended`
-      : event === "missed"
-      ? "📵 Missed call"
-      : "📵 Call declined";
-
-    updateConversation(withUser, label, msg.time, false);
+      : "📵 Missed call";
+    updateConversation(withUser, label, time, false);
   };
 
   return {
@@ -419,7 +372,7 @@ export function useDM(socket: Socket | null, username: string) {
     closeDM,
     sendDM,
     emitDMTyping,
-    markDMSeen,          //  new
+    markDMSeen,
     addCallEventMessage,
   };
 }

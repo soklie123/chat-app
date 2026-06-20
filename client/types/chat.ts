@@ -14,30 +14,20 @@ export type ChatMessage = {
   username: string;
   color: string;
   reactions: Reaction[];
-
-  // for image sent use cloudinary
   fileUrl?: string;
   fileName?: string;
   fileType?: string;
   isImage?: boolean;
-
-  // sent voice
   audioUrl?: string;
   audioDuration?: number;
-
   callEvent?: "missed" | "ended" | "rejected";
   callType?: "voice" | "video";
-  callDuration?: number; // seconds
+  callDuration?: number;
   status?: MessageStatus;
-
-  replyTo?: {
-    _id: string;
-    username: string;
-    text: string;
-  };
+  replyTo?: { _id: string; username: string; text: string };
   forwarded?: boolean;
-  fromUsername?: string; // for forwarded messages
-  caption?: string;      // for forwarded messages
+  fromUsername?: string;
+  caption?: string;
 };
 
 export type TypingUser = {
@@ -51,61 +41,45 @@ export type DMMessage = {
   fromSelf: boolean;
   time: string;
   username: string;
-
-  reactions?: {
-    emoji: string;
-    count: number;
-    usernames: string[];
-  }[];
-
-  // for image sent use cloudinary
+  reactions?: { emoji: string; count: number; usernames: string[] }[];
   fileUrl?: string;
   fileName?: string;
   fileType?: string;
   isImage?: boolean;
-
-  // sent voice
   audioUrl?: string;
   audioDuration?: number;
-
-  // 
-  callEvent?:    "missed" | "ended" | "rejected";
-  callType?:     "voice" | "video";
+  callEvent?: "missed" | "ended" | "rejected";
+  callType?: "voice" | "video";
   callDuration?: number;
-
   status?: MessageStatus;
-
-  replyTo?: {
-    _id: string;
-    username: string;
-    text: string;
-  };
+  replyTo?: { _id: string; username: string; text: string };
   forwarded?: boolean;
   caption?: string;
-  fromUsername?: string; // for forwarded messages
+  fromUsername?: string;
 };
 
 export type DMConversation = {
-  username: string;       // the other person
+  username: string;
   lastMessage: string;
   time: string;
   unread: number;
+  isGroup?: boolean;
+  members?: string[];
 };
 
 export type CallType = "voice" | "video";
 
 export type CallState =
-| "idle"
-| "calling" // outgoing - waiting for answer
-| "receiving" // incoming - ringing
-| "connected" // in call
-| "ended";
+  | "idle"
+  | "calling"
+  | "receiving"
+  | "connected"
+  | "ended";
 
 export type CallInfo = {
   callId: string;
   from: string;
   to: string;
   type: CallType;
-  roomId?: string; // for group calls
+  roomId?: string;
 };
-

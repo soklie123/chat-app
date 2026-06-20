@@ -1,5 +1,5 @@
-import { useRef } from "react";
-import { useState } from "react";
+
+import { useRef, useState } from "react";
 import { useLongPress } from "../../hooks/useLongPress";
 import ForwardPicker from "../shared/ForwardPicker";
 
@@ -29,9 +29,9 @@ export function HoverPanel({
   rooms:          { id: string; name: string }[];
   currentUsername: string;
 }) {
-  const [emojiExpanded,   setEmojiExpanded]   = useState(false);
-  const [showPicker,      setShowPicker]       = useState(false);
-  const [copied,          setCopied]           = useState(false);
+  const [emojiExpanded, setEmojiExpanded] = useState(false);
+  const [showPicker, setShowPicker] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(msgText).then(() => {
@@ -43,13 +43,13 @@ export function HoverPanel({
   return (
     <>
       <div
-        className={`flex flex-col gap-1 ${align === "right" ? "items-end" : "items-start"} mb-1`}
+        className={`flex flex-col gap-1.5 ${align === "right" ? "items-end animate-[slide-in_0.15s_ease-out]" : "items-start animate-[slide-in_0.15s_ease-out]"} mb-2 z-20 relative select-none`}
         data-hover-panel
       >
-        {/* Emoji row */}
-        <div className="flex items-center gap-0.5 px-2 py-1.5 bg-white rounded-2xl shadow-lg border border-gray-100">
+        {/* Emoji Quick Reaction Panel Bar */}
+        <div className="flex items-center gap-1 p-1 bg-[#17212b] border border-[#101921] rounded-xl shadow-[0_4px_16px_rgba(0,0,0,0.4)] backdrop-blur-md">
           {emojiExpanded ? (
-            <>
+            <div className="flex items-center gap-0.5">
               {EMOJIS.map((emoji) => (
                 <button
                   key={emoji}
@@ -59,91 +59,92 @@ export function HoverPanel({
                     if (msgId) onReact(msgId, emoji);
                     setEmojiExpanded(false);
                   }}
-                  className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 active:scale-110 transition-all text-[18px]"
+                  className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[#202b36] active:scale-125 transition-all text-[18px]"
                 >
                   {emoji}
                 </button>
               ))}
               <button
                 onMouseDown={(e) => { e.preventDefault(); setEmojiExpanded(false); }}
-                className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 text-slate-400 text-[11px] ml-0.5"
+                className="w-6 h-6 flex items-center justify-center rounded-md hover:bg-[#202b36] text-gray-400 hover:text-white text-[10px] ml-1 transition-colors"
               >
                 ✕
               </button>
-            </>
+            </div>
           ) : (
             <button
               onMouseDown={(e) => { e.preventDefault(); setEmojiExpanded(true); }}
-              className="flex items-center gap-1 px-2 py-1 rounded-full hover:bg-gray-100 transition-colors text-[16px]"
+              className="flex items-center gap-1.5 px-2.5 py-1 text-[13px] text-gray-300 font-medium rounded-lg hover:bg-[#202b36] transition-colors"
             >
-              😊 <span className="text-[11px] text-slate-400">+</span>
+              <span>😊</span>
+              <span className="text-[11px] text-[#5288c1] font-bold">+ React</span>
             </button>
           )}
         </div>
 
-        {/* Action row */}
-        <div className="flex items-center bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
-          {/* Reply */}
+        {/* Telegram Core Quick Actions Bar Menu */}
+        <div className="flex items-center bg-[#17212b] border border-[#101921] rounded-xl shadow-[0_8px_24px_rgba(0,0,0,0.5)] overflow-hidden">
+          {/* Reply Action */}
           <button
             onMouseDown={(e) => {
               e.preventDefault();
               e.stopPropagation();
               if (msgId) onReply({ _id: msgId, username: msgUsername, text: msgText });
             }}
-            className="flex items-center gap-1.5 px-3 py-2 text-[12px] text-slate-600 hover:bg-gray-50 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-2 text-[12.5px] font-medium text-gray-300 hover:bg-[#202b36] hover:text-[#5288c1] transition-all"
           >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="9 17 4 12 9 7" />
               <path d="M20 18v-2a4 4 0 0 0-4-4H4" />
             </svg>
             Reply
           </button>
 
-          <div className="w-px h-5 bg-gray-200" />
+          <div className="w-[1px] h-4 bg-[#101921]" />
 
-          {/* Forward — opens picker */}
+          {/* Forward Action */}
           <button
             onMouseDown={(e) => {
               e.preventDefault();
               e.stopPropagation();
               setShowPicker(true);
             }}
-            className="flex items-center gap-1.5 px-3 py-2 text-[12px] text-slate-600 hover:bg-gray-50 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-2 text-[12.5px] font-medium text-gray-300 hover:bg-[#202b36] hover:text-[#5288c1] transition-all"
           >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="15 17 20 12 15 7" />
               <path d="M4 18v-2a4 4 0 0 1 4-4h12" />
             </svg>
             Forward
           </button>
 
-          <div className="w-px h-5 bg-gray-200" />
+          <div className="w-[1px] h-4 bg-[#101921]" />
 
-          {/* Copy */}
+          {/* Copy Text Clipboard Action */}
           <button
             onMouseDown={(e) => {
               e.preventDefault();
               e.stopPropagation();
               handleCopy();
             }}
-            className="flex items-center gap-1.5 px-3 py-2 text-[12px] text-slate-600 hover:bg-gray-50 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-2 text-[12.5px] font-medium text-gray-300 hover:bg-[#202b36] transition-all min-w-[72px] justify-center"
           >
             {copied ? (
-              <span className="text-green-500">✓ Copied</span>
+              <span className="text-[#4ade80] flex items-center gap-1 font-semibold">✓ Copied</span>
             ) : (
-              <>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <div className="flex items-center gap-1.5 hover:text-[#5288c1]">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
                   <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
                 </svg>
-                Copy
-              </>
+                <span>Copy</span>
+              </div>
             )}
           </button>
         </div>
       </div>
 
-      {/* Forward picker modal */}
+      {/* Modern Forward Overlay Interface Modal Picker */}
       {showPicker && (
         <ForwardPicker
           text={msgText}
@@ -162,7 +163,7 @@ export function HoverPanel({
   );
 }
 
-// ── Message Bubble ────────────────────────────────────
+// ── Message Bubble Container Wrapper ───────────────────
 export function MessageBubble({
   id,
   hoveredId,
@@ -200,7 +201,7 @@ export function MessageBubble({
   
   return (
     <div
-      className={`flex flex-col ${fromSelf ? "items-end" : "items-start"} w-full`}
+      className={`flex flex-col ${fromSelf ? "items-end" : "items-start"} w-full relative group`}
       onMouseEnter={() => {
         if (leaveTimer.current) clearTimeout(leaveTimer.current);
         setHoveredId(id);
@@ -208,10 +209,11 @@ export function MessageBubble({
       onMouseLeave={() => {
         leaveTimer.current = setTimeout(() => {
           setHoveredId((cur) => (cur === id ? null : cur));
-        }, 400);
+        }, 300);
       }}
       {...longPress}
     >
+      {/* Absolute floating action display layer */}
       {isHovered && (
         <HoverPanel
           msgId={msgId}
@@ -226,7 +228,12 @@ export function MessageBubble({
           currentUsername={currentUsername}
         />
       )}
-      {children}
+      
+      {/* Message Text Bubble Markup Child Element Render Node */}
+      <div className="transition-transform duration-150 active:scale-[0.99] origin-left">
+        {children}
+      </div>
     </div>
   );
 }
+

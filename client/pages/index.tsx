@@ -1,8 +1,9 @@
+
 import { useState, useRef, useEffect } from "react";
 import { useChat } from "../hooks/useChat";
 import { useDM } from "../hooks/useDM";
 import { useNotifications } from "../hooks/useNotifications";
-import { useCall } from "../hooks/useCall"
+import { useCall } from "../hooks/useCall";
 import NotificationBanner, { useToasts } from "../components/shared/NotificationBanner";
 import Avatar from "../components/shared/Avatar";
 import UsernameGate from "../components/shared/UsernameGate";
@@ -73,39 +74,34 @@ export default function Home() {
     console.log("onCallEvent received:", event);
     const withUser = event.with || activeDMRef.current || "";
 
-    // When a call event happens, add it to DM messages
     if (!withUser) {
       console.warn("No withUser — call event lost");
       return;
     }
-      addCallEventMessage(
-        event.type,
-        event.callType,
-        withUser,
-        event.duration,
-        event.type !== "missed",
-      );
+    addCallEventMessage(
+      event.type,
+      event.callType,
+      withUser,
+      event.duration,
+      event.type !== "missed",
+    );
 
-      // If DM not open, open it to show the event
-      if (!activeDMRef.current) {
-        openDM(withUser);
-      
+    if (!activeDMRef.current) {
+      openDM(withUser);
     }
   });
 
-  // for replying to messages in rooms or DMs
   const [replyTo, setReplyTo] = useState<{ 
     _id: string; username: string; text: string 
   } | null>(null);
 
-  // ========= Forward ========================================================
   const [forwardData, setForwardData] = useState<{
     text: string;
     fromUsername: string;
   } | null>(null);
 
   const cancelForward = () => setForwardData(null);
-  // Hanle forward
+
   const handleForward = (
     text: string,
     fromUsername: string,
@@ -153,24 +149,20 @@ export default function Home() {
       );
     }
     setForwardData(null);
-  }
+  };
 
   const [dmReplyTo, setDMReplyTo] = useState<{ 
     _id: string; username: string; text: string 
   } | null>(null);
 
-  // ====================================================================================
-
   const { notifyMessage, notifyDM } = useNotifications(username);
   const { toasts, addToast, removeToast } = useToasts();
 
-  // Track previous message count to detect new ones
   const [prevLen, setPrevLen] = useState(0);
 
   if (messages.length > prevLen) {
     const newMsg = messages[messages.length - 1];
     if (newMsg && !newMsg.fromSelf) {
-      // Only notify if user is in a different room or DM is open
       if (activeDM) {
         notifyMessage(newMsg.username, newMsg.text);
         addToast(newMsg.username, newMsg.text, false, currentRoom);
@@ -179,7 +171,6 @@ export default function Home() {
     setPrevLen(messages.length);
   }
 
-  // ── Notify on new DM ────────────────────────────────
   const [prevDMLen, setPrevDMLen] = useState(0);
   if (dmMessages.length > prevDMLen) {
     const newDM = dmMessages[dmMessages.length - 1];
@@ -189,8 +180,6 @@ export default function Home() {
     setPrevDMLen(dmMessages.length);
   }
 
-
-  // ── Notify on new DM from conversations (when DM not open) ──
   const [prevConvUnread, setPrevConvUnread ] = useState(0);
   const totalUnread = conversations.reduce((s, c) => s + c.unread, 0);
   if (totalUnread > prevConvUnread) {
@@ -201,30 +190,37 @@ export default function Home() {
     }
   }
   if (totalUnread !== prevConvUnread) setPrevConvUnread(totalUnread);
-  // ====================================================================================
 
   const handleLogout = () => {
     logout();
     setUsername("");
   };
 
-  // When user opens a DM, close the room view
   const handleOpenDM = (toUser: string) => {
     console.log("Opening DM with", toUser);
     openDM(toUser);
   };
 
-  // When user clicks a room, close DM
   const handleJoinRoom = (roomId: string) => {
     closeDM();
     joinRoom(roomId);
   };
 
+  // Telegram style creators
+  const handleCreateTelegramGroup = (name: string, members: string[]) => {
+    createRoom(name);
+    if (socket && members.length > 0) {
+      socket.emit("invite_to_group", { room: name, users: members });
+    }
+  };
+
+  const handleCreateTelegramChannel = (name: string) => {
+    createRoom(name);
+  };
+
   if (!username) {
     return <UsernameGate onJoin={setUsername} />;
   }
-// console.log("callState:", callState, "callInfo:", callInfo);
-
 
   return (
     <>
@@ -261,7 +257,6 @@ export default function Home() {
         onToggleSpeaker={toggleSpeaker}
       />
 
-      {/* ── Toast notifications ── */}
       <NotificationBanner
         toasts={toasts}
         onDismiss={removeToast}
@@ -270,20 +265,18 @@ export default function Home() {
       />
 
       <div className="h-screen bg-[#1e2a35] flex overflow-hidden">
-  <div className="flex-1 flex overflow-hidden">
+        <div className="flex-1 flex overflow-hidden">
 
           {/* Sidebar */}
           <Sidebar
-            rooms={rooms}
-            currentRoom={currentRoom}
             username={username}
-            onJoin={handleJoinRoom}
-            onCreate={createRoom}
             onLogout={handleLogout}
             onlineUsers={onlineUsers}
             conversations={conversations}
             activeDM={activeDM}
             onOpenDM={handleOpenDM}
+            onCreateGroup={handleCreateTelegramGroup}
+            onCreateChannel={handleCreateTelegramChannel}
           />
 
           {/* Main panel — DM or Room */}
@@ -294,7 +287,6 @@ export default function Home() {
                 messages={dmMessages}
                 dmTyping={dmTyping}
                 isOnline={onlineUsers.includes(activeDM)}
-
                 onSend={(text, file, audio) => {
                   const reply = dmReplyTo;
                   if (!text.trim() && !file && !audio) return;
@@ -315,7 +307,6 @@ export default function Home() {
                 }}
                 onTyping={emitDMTyping}
                 onClose={closeDM}
-
                 onReact={(messageId, emoji) => 
                   socket?.emit("add_dm_reaction", {
                     messageId,
@@ -329,14 +320,13 @@ export default function Home() {
                 onSeen={(ids) => markDMSeen(ids)}
                 onReply={(msg) => {
                   console.log("DM reply set:", msg);
-                  setDMReplyTo(msg)
+                  setDMReplyTo(msg);
                 }}
                 onForward={handleForward}
                 onlineUsers={onlineUsers}
                 rooms={rooms}
                 replyTo={dmReplyTo ?? undefined}
                 onCancelReply={() => setDMReplyTo(null)}
-
                 forwardMsg={forwardData ?? undefined}
                 onCancelForward={() => setForwardData(null)}
                 onForwardSend={(text, fromUsername, caption) => sendForward(caption)}
@@ -359,7 +349,7 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Online users strip — click to open DM */}
+              {/* Online users strip */}
               {onlineUsers.length > 0 && (
                 <div className="px-3.5 py-2.5 border-b border-gray-200 bg-[#f7f9fb] flex items-center gap-4 overflow-x-auto flex-shrink-0">
                   {onlineUsers.map((name) => (
@@ -390,6 +380,7 @@ export default function Home() {
                 onlineUsers={onlineUsers}
                 rooms={rooms}
               />       
+              
               {forwardData && (
                 <ForwardBar
                   text={forwardData.text}
@@ -398,6 +389,7 @@ export default function Home() {
                   onCancel={cancelForward}
                 />
               )}
+
               {/* Input */}
               <InputBar
                 currentRoom={currentRoom}
@@ -408,7 +400,6 @@ export default function Home() {
                 onTyping={emitTyping}
                 replyTo={replyTo ?? undefined}
                 onCancelReply={() => setReplyTo(null)}
-
                 forwardMsg={forwardData ?? undefined}
                 onCancelForward={() => setForwardData(null)}
                 onForwardSend={(text, fromUsername, caption) => sendForward(caption)}
@@ -420,3 +411,4 @@ export default function Home() {
     </>
   );
 }
+

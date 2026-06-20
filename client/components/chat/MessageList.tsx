@@ -1,3 +1,4 @@
+
 import { useEffect, useRef, useState } from "react";
 import { ChatMessage, TypingUser } from "../../types/chat";
 import Avatar from "../shared/Avatar";
@@ -20,21 +21,21 @@ function ReactionBubbles({
 }) {
   if (!reactions || reactions.length === 0) return null;
   return (
-    <div className="flex flex-wrap gap-1 mt-1.5">
+    <div className="flex flex-wrap gap-1.5 mt-2">
       {reactions.map((r) => {
         const reacted = r.usernames.includes(currentUsername);
         return (
           <button
             key={r.emoji}
             onClick={() => onReact(r.emoji)}
-            className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] border transition-all ${
+            className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[12px] border transition-all duration-200 select-none ${
               reacted
-                ? "bg-[#0088cc]/10 border-[#0088cc]/30 text-[#0088cc]"
-                : "bg-black/5 border-transparent text-gray-600 hover:bg-black/10"
+                ? "bg-[#5288c1]/20 border-[#5288c1]/40 text-[#5288c1] shadow-sm font-semibold"
+                : "bg-[#202b36] border-[#101921] text-gray-400 hover:bg-[#2b3946] hover:text-white"
             }`}
           >
             <span>{r.emoji}</span>
-            <span className="font-medium">{r.count}</span>
+            <span className="text-[11px] font-medium opacity-90">{r.count}</span>
           </button>
         );
       })}
@@ -90,18 +91,18 @@ export default function MessageList({
   }, [messages]);
 
   return (
-    <div className="flex-1 overflow-y-auto px-4 py-4 bg-[#f0f4f8]">
+    <div className="flex-1 overflow-y-auto px-5 py-4 bg-[#0e1621] custom-scrollbar selection:bg-[#5288c1]/30">
 
-      {/* Room label */}
-      <div className="flex items-center gap-3 mb-5">
-        <div className="flex-1 h-px bg-slate-200" />
-        <span className="text-[11px] text-slate-400 bg-slate-100 border border-slate-200 px-3 py-1 rounded-full font-medium">
+      {/* Modern Static Room Sticky Badge Divider */}
+      <div className="flex items-center gap-4 mb-6 sticky top-0 z-10 opacity-95">
+        <div className="flex-1 h-[1px] bg-[#101921]" />
+        <span className="text-[12px] text-[#5288c1] bg-[#17212b] border border-[#101921] px-4 py-1 rounded-full font-semibold shadow-md tracking-wide backdrop-blur-sm">
           # {currentRoom}
         </span>
-        <div className="flex-1 h-px bg-slate-200" />
+        <div className="flex-1 h-[1px] bg-[#101921]" />
       </div>
 
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-2.5">
         {messages.map((msg, i) => {
           const id = msg._id ?? String(i);
 
@@ -120,9 +121,9 @@ export default function MessageList({
           }
 
           return msg.fromSelf ? (
-            // Own message
-            <div key={id} className="flex justify-end">
-              <div className="max-w-[72%]">
+            /* Telegram Authentic Premium Sent Message Bubble Row Setup */
+            <div key={id} className="flex justify-end group/row">
+              <div className="max-w-[70%]">
                 <MessageBubble
                   id={id}
                   hoveredId={hoveredId}
@@ -140,29 +141,30 @@ export default function MessageList({
                   rooms={rooms}
                   currentUsername={currentUsername}
                 >
-                  <div className="bg-[#0088cc] rounded-2xl rounded-tr-sm px-4 py-2.5 text-sm text-white leading-relaxed shadow-sm">
+                  <div className="bg-[#2b5278] border border-[#244565] rounded-2xl rounded-tr-[4px] px-3.5 py-2 text-[14.5px] text-[#f5f6f7] leading-relaxed shadow-md relative">
 
                     {msg.forwarded && (
-                      <div className="text-[10px] text-white/60 mb-1.5 flex items-center gap-1 border-l-2 border-white/30 pl-2">
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <div className="text-[11px] text-[#8ab4f8] mb-1.5 flex items-center gap-1.5 border-l-2 border-[#5288c1] pl-2.5 py-0.5">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                           <polyline points="15 17 20 12 15 7" />
                           <path d="M4 18v-2a4 4 0 0 1 4-4h12" />
                         </svg>
-                        Forwarded from @{msg.fromUsername || msg.username}
+                        <span className="font-medium">Forwarded from @{msg.fromUsername || msg.username}</span>
                       </div>
                     )}
 
                     {msg.replyTo && <ReplyPreview replyTo={msg.replyTo} fromSelf={true} />}
-                    {msg.text && <span>{msg.text}</span>}
-                    {msg.caption && <div className="text-[11px] text-white/70 mt-1">{msg.caption}</div>}
+                    {msg.text && <span className="whitespace-pre-wrap break-words block">{msg.text}</span>}
+                    {msg.caption && <div className="text-[12px] text-gray-300 mt-1 italic">{msg.caption}</div>}
                     {msg.audioUrl && <AudioPlayer audioUrl={msg.audioUrl} audioDuration={msg.audioDuration} fromSelf={true} />}
                     {msg.fileUrl && <FilePreview fileUrl={msg.fileUrl} fileName={msg.fileName} fileType={msg.fileType} isImage={msg.isImage} />}
+                    
                     {msg.reactions && msg.reactions.length > 0 && (
                       <ReactionBubbles reactions={msg.reactions} currentUsername={currentUsername} onReact={(emoji) => msg._id && onReact(msg._id, emoji)} />
                     )}
 
-                    <div className="flex items-center justify-end gap-1 mt-1">
-                      <span className="text-[10px] text-white/60">{msg.time}</span>
+                    <div className="flex items-center justify-end gap-1.5 mt-1 -mb-0.5 select-none opacity-75">
+                      <span className="text-[10px] text-gray-300/80 font-medium">{msg.time}</span>
                       <MessageStatusIcon status={msg.status} />
                     </div>
                   </div>
@@ -170,11 +172,15 @@ export default function MessageList({
               </div>
             </div>
           ) : (
-            // Other user message
-            <div key={id} className="flex items-end gap-2 max-w-[72%]">
-              <Avatar name={msg.username} size={30} />
+            /* Telegram Authentic Premium Received Message Bubble Row Setup */
+            <div key={id} className="flex items-end gap-2.5 max-w-[70%] group/row">
+              <div className="flex-shrink-0 mb-1">
+                <Avatar name={msg.username} size={32} />
+              </div>
               <div className="flex-1 min-w-0">
-                <div className="text-[11px] text-slate-400 mb-1 ml-1 font-medium">{msg.username}</div>
+                <div className="text-[12px] text-[#5288c1] mb-1 ml-1.5 font-semibold tracking-wide">
+                  @{msg.username}
+                </div>
                 <MessageBubble
                   id={id}
                   hoveredId={hoveredId}
@@ -190,28 +196,31 @@ export default function MessageList({
                   rooms={rooms}
                   currentUsername={currentUsername}
                 >
-                  <div className="bg-white rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm text-slate-800 leading-relaxed shadow-sm">
+                  <div className="bg-[#182533] border border-[#101921] rounded-2xl rounded-tl-[4px] px-3.5 py-2 text-[14.5px] text-[#f5f6f7] leading-relaxed shadow-md relative">
 
                     {msg.forwarded && (
-                      <div className="text-[10px] text-slate-400 mb-1.5 flex items-center gap-1 border-l-2 border-slate-200 pl-2">
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <div className="text-[11px] text-[#6c7883] mb-1.5 flex items-center gap-1.5 border-l-2 border-slate-600 pl-2.5 py-0.5">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                           <polyline points="15 17 20 12 15 7" />
                           <path d="M4 18v-2a4 4 0 0 1 4-4h12" />
                         </svg>
-                        Forwarded from @{msg.fromUsername || msg.username}
+                        <span className="font-medium">Forwarded from @{msg.fromUsername || msg.username}</span>
                       </div>
                     )}
 
                     {msg.replyTo && <ReplyPreview replyTo={msg.replyTo} fromSelf={false} />}
-                    {msg.text && <span>{msg.text}</span>}
-                    {msg.caption && <div className="text-[11px] text-slate-400 mt-1">{msg.caption}</div>}
+                    {msg.text && <span className="whitespace-pre-wrap break-words block">{msg.text}</span>}
+                    {msg.caption && <div className="text-[12px] text-gray-400 mt-1 italic">{msg.caption}</div>}
                     {msg.audioUrl && <AudioPlayer audioUrl={msg.audioUrl} audioDuration={msg.audioDuration} fromSelf={false} />}
                     {msg.fileUrl && <FilePreview fileUrl={msg.fileUrl} fileName={msg.fileName} fileType={msg.fileType} isImage={msg.isImage} />}
+                    
                     {msg.reactions && msg.reactions.length > 0 && (
                       <ReactionBubbles reactions={msg.reactions} currentUsername={currentUsername} onReact={(emoji) => msg._id && onReact(msg._id, emoji)} />
                     )}
 
-                    <div className="text-[10px] text-slate-400 mt-1 text-right">{msg.time}</div>
+                    <div className="text-[10px] text-gray-400 mt-1 -mb-0.5 text-right font-medium select-none opacity-75">
+                      {msg.time}
+                    </div>
                   </div>
                 </MessageBubble>
               </div>
@@ -220,12 +229,15 @@ export default function MessageList({
         })}
       </div>
 
+      {/* Typing Indicator Strip Wrap Container */}
       {typingUser && (
-        <div className="flex items-end gap-2 max-w-[72%] mt-2">
-          <Avatar name={typingUser.name} size={30} />
+        <div className="flex items-end gap-2.5 max-w-[70%] mt-3 animate-pulse duration-1000">
+          <Avatar name={typingUser.name} size={32} />
           <div>
-            <div className="text-[11px] text-slate-400 mb-1 ml-1 font-medium">{typingUser.name}</div>
-            <div className="bg-white rounded-2xl rounded-tl-sm shadow-sm px-1">
+            <div className="text-[12px] text-[#5288c1] mb-1 ml-1.5 font-semibold">
+              @{typingUser.name}
+            </div>
+            <div className="bg-[#182533] border border-[#101921] rounded-2xl rounded-tl-[4px] shadow-md px-3.5 py-2.5">
               <TypingDots />
             </div>
           </div>
@@ -236,3 +248,4 @@ export default function MessageList({
     </div>
   );
 }
+

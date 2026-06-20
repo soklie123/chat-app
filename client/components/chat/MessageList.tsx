@@ -1,4 +1,3 @@
-
 import { useEffect, useRef, useState } from "react";
 import { ChatMessage, TypingUser } from "../../types/chat";
 import Avatar from "../shared/Avatar";
@@ -9,6 +8,45 @@ import CallEventBubble from "../call/CallEventBubble";
 import MessageStatusIcon from "./MessageStatus";
 import ReplyPreview from "./Replypreview";
 import { MessageBubble } from "./MessageBubble";
+
+// ── Inline style objects ──────────────────────────────
+// These are a deliberate fallback. If Tailwind's arbitrary-value classes
+// (bg-[#182533] etc.) are for any reason not being generated in this
+// project's build, these inline styles guarantee the bubble still looks
+// correct. Once Tailwind is confirmed working, these can be removed and
+// the className-only version restored — but for now this can't fail.
+const sentBubbleStyle: React.CSSProperties = {
+  background: "#2b5278",
+  border: "1px solid #244565",
+  borderRadius: "16px",
+  borderTopRightRadius: "4px",
+  padding: "8px 14px",
+  fontSize: "14.5px",
+  color: "#f5f6f7",
+  lineHeight: 1.5,
+  boxShadow: "0 2px 6px rgba(0,0,0,0.25)",
+  position: "relative",
+};
+
+const receivedBubbleStyle: React.CSSProperties = {
+  background: "#182533",
+  border: "1px solid #101921",
+  borderRadius: "16px",
+  borderTopLeftRadius: "4px",
+  padding: "8px 14px",
+  fontSize: "14.5px",
+  color: "#f5f6f7",
+  lineHeight: 1.5,
+  boxShadow: "0 2px 6px rgba(0,0,0,0.25)",
+  position: "relative",
+};
+
+const containerStyle: React.CSSProperties = {
+  flex: 1,
+  overflowY: "auto",
+  padding: "16px 20px",
+  background: "#0e1621",
+};
 
 function ReactionBubbles({
   reactions,
@@ -21,21 +59,29 @@ function ReactionBubbles({
 }) {
   if (!reactions || reactions.length === 0) return null;
   return (
-    <div className="flex flex-wrap gap-1.5 mt-2">
+    <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginTop: "8px" }}>
       {reactions.map((r) => {
         const reacted = r.usernames.includes(currentUsername);
         return (
           <button
             key={r.emoji}
             onClick={() => onReact(r.emoji)}
-            className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[12px] border transition-all duration-200 select-none ${
-              reacted
-                ? "bg-[#5288c1]/20 border-[#5288c1]/40 text-[#5288c1] shadow-sm font-semibold"
-                : "bg-[#202b36] border-[#101921] text-gray-400 hover:bg-[#2b3946] hover:text-white"
-            }`}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              padding: "2px 10px",
+              borderRadius: "999px",
+              fontSize: "12px",
+              border: reacted ? "1px solid rgba(82,136,193,0.4)" : "1px solid #101921",
+              background: reacted ? "rgba(82,136,193,0.2)" : "#202b36",
+              color: reacted ? "#5288c1" : "#9aa5b1",
+              fontWeight: reacted ? 600 : 400,
+              cursor: "pointer",
+            }}
           >
             <span>{r.emoji}</span>
-            <span className="text-[11px] font-medium opacity-90">{r.count}</span>
+            <span style={{ fontSize: "11px", opacity: 0.9 }}>{r.count}</span>
           </button>
         );
       })}
@@ -91,18 +137,28 @@ export default function MessageList({
   }, [messages]);
 
   return (
-    <div className="flex-1 overflow-y-auto px-5 py-4 bg-[#0e1621] custom-scrollbar selection:bg-[#5288c1]/30">
-
-      {/* Modern Static Room Sticky Badge Divider */}
-      <div className="flex items-center gap-4 mb-6 sticky top-0 z-10 opacity-95">
-        <div className="flex-1 h-[1px] bg-[#101921]" />
-        <span className="text-[12px] text-[#5288c1] bg-[#17212b] border border-[#101921] px-4 py-1 rounded-full font-semibold shadow-md tracking-wide backdrop-blur-sm">
+    <div className="custom-scrollbar" style={containerStyle}>
+      {/* Room divider */}
+      <div style={{ display: "flex", alignItems: "center", gap: "16px", marginBottom: "24px" }}>
+        <div style={{ flex: 1, height: "1px", background: "#101921" }} />
+        <span
+          style={{
+            fontSize: "12px",
+            color: "#5288c1",
+            background: "#17212b",
+            border: "1px solid #101921",
+            padding: "4px 16px",
+            borderRadius: "999px",
+            fontWeight: 600,
+            letterSpacing: "0.02em",
+          }}
+        >
           # {currentRoom}
         </span>
-        <div className="flex-1 h-[1px] bg-[#101921]" />
+        <div style={{ flex: 1, height: "1px", background: "#101921" }} />
       </div>
 
-      <div className="flex flex-col gap-2.5">
+      <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
         {messages.map((msg, i) => {
           const id = msg._id ?? String(i);
 
@@ -121,9 +177,9 @@ export default function MessageList({
           }
 
           return msg.fromSelf ? (
-            /* Telegram Authentic Premium Sent Message Bubble Row Setup */
-            <div key={id} className="flex justify-end group/row">
-              <div className="max-w-[70%]">
+            /* Sent message row */
+            <div key={id} style={{ display: "flex", justifyContent: "flex-end" }}>
+              <div style={{ maxWidth: "70%" }}>
                 <MessageBubble
                   id={id}
                   hoveredId={hoveredId}
@@ -141,30 +197,29 @@ export default function MessageList({
                   rooms={rooms}
                   currentUsername={currentUsername}
                 >
-                  <div className="bg-[#2b5278] border border-[#244565] rounded-2xl rounded-tr-[4px] px-3.5 py-2 text-[14.5px] text-[#f5f6f7] leading-relaxed shadow-md relative">
-
+                  <div style={sentBubbleStyle}>
                     {msg.forwarded && (
-                      <div className="text-[11px] text-[#8ab4f8] mb-1.5 flex items-center gap-1.5 border-l-2 border-[#5288c1] pl-2.5 py-0.5">
+                      <div style={{ fontSize: "11px", color: "#8ab4f8", marginBottom: "6px", display: "flex", alignItems: "center", gap: "6px", borderLeft: "2px solid #5288c1", paddingLeft: "10px" }}>
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                           <polyline points="15 17 20 12 15 7" />
                           <path d="M4 18v-2a4 4 0 0 1 4-4h12" />
                         </svg>
-                        <span className="font-medium">Forwarded from @{msg.fromUsername || msg.username}</span>
+                        <span style={{ fontWeight: 500 }}>Forwarded from @{msg.fromUsername || msg.username}</span>
                       </div>
                     )}
 
                     {msg.replyTo && <ReplyPreview replyTo={msg.replyTo} fromSelf={true} />}
-                    {msg.text && <span className="whitespace-pre-wrap break-words block">{msg.text}</span>}
-                    {msg.caption && <div className="text-[12px] text-gray-300 mt-1 italic">{msg.caption}</div>}
+                    {msg.text && <span style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", display: "block" }}>{msg.text}</span>}
+                    {msg.caption && <div style={{ fontSize: "12px", color: "#d1d5db", marginTop: "4px", fontStyle: "italic" }}>{msg.caption}</div>}
                     {msg.audioUrl && <AudioPlayer audioUrl={msg.audioUrl} audioDuration={msg.audioDuration} fromSelf={true} />}
                     {msg.fileUrl && <FilePreview fileUrl={msg.fileUrl} fileName={msg.fileName} fileType={msg.fileType} isImage={msg.isImage} />}
-                    
+
                     {msg.reactions && msg.reactions.length > 0 && (
                       <ReactionBubbles reactions={msg.reactions} currentUsername={currentUsername} onReact={(emoji) => msg._id && onReact(msg._id, emoji)} />
                     )}
 
-                    <div className="flex items-center justify-end gap-1.5 mt-1 -mb-0.5 select-none opacity-75">
-                      <span className="text-[10px] text-gray-300/80 font-medium">{msg.time}</span>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "6px", marginTop: "4px", opacity: 0.75 }}>
+                      <span style={{ fontSize: "10px", color: "rgba(209,213,219,0.8)", fontWeight: 500 }}>{msg.time}</span>
                       <MessageStatusIcon status={msg.status} />
                     </div>
                   </div>
@@ -172,13 +227,13 @@ export default function MessageList({
               </div>
             </div>
           ) : (
-            /* Telegram Authentic Premium Received Message Bubble Row Setup */
-            <div key={id} className="flex items-end gap-2.5 max-w-[70%] group/row">
-              <div className="flex-shrink-0 mb-1">
+            /* Received message row */
+            <div key={id} style={{ display: "flex", alignItems: "flex-end", gap: "10px", maxWidth: "70%" }}>
+              <div style={{ flexShrink: 0, marginBottom: "4px" }}>
                 <Avatar name={msg.username} size={32} />
               </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-[12px] text-[#5288c1] mb-1 ml-1.5 font-semibold tracking-wide">
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: "12px", color: "#5288c1", marginBottom: "4px", marginLeft: "6px", fontWeight: 600, letterSpacing: "0.02em" }}>
                   @{msg.username}
                 </div>
                 <MessageBubble
@@ -196,29 +251,28 @@ export default function MessageList({
                   rooms={rooms}
                   currentUsername={currentUsername}
                 >
-                  <div className="bg-[#182533] border border-[#101921] rounded-2xl rounded-tl-[4px] px-3.5 py-2 text-[14.5px] text-[#f5f6f7] leading-relaxed shadow-md relative">
-
+                  <div style={receivedBubbleStyle}>
                     {msg.forwarded && (
-                      <div className="text-[11px] text-[#6c7883] mb-1.5 flex items-center gap-1.5 border-l-2 border-slate-600 pl-2.5 py-0.5">
+                      <div style={{ fontSize: "11px", color: "#6c7883", marginBottom: "6px", display: "flex", alignItems: "center", gap: "6px", borderLeft: "2px solid #475569", paddingLeft: "10px" }}>
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                           <polyline points="15 17 20 12 15 7" />
                           <path d="M4 18v-2a4 4 0 0 1 4-4h12" />
                         </svg>
-                        <span className="font-medium">Forwarded from @{msg.fromUsername || msg.username}</span>
+                        <span style={{ fontWeight: 500 }}>Forwarded from @{msg.fromUsername || msg.username}</span>
                       </div>
                     )}
 
                     {msg.replyTo && <ReplyPreview replyTo={msg.replyTo} fromSelf={false} />}
-                    {msg.text && <span className="whitespace-pre-wrap break-words block">{msg.text}</span>}
-                    {msg.caption && <div className="text-[12px] text-gray-400 mt-1 italic">{msg.caption}</div>}
+                    {msg.text && <span style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", display: "block" }}>{msg.text}</span>}
+                    {msg.caption && <div style={{ fontSize: "12px", color: "#9ca3af", marginTop: "4px", fontStyle: "italic" }}>{msg.caption}</div>}
                     {msg.audioUrl && <AudioPlayer audioUrl={msg.audioUrl} audioDuration={msg.audioDuration} fromSelf={false} />}
                     {msg.fileUrl && <FilePreview fileUrl={msg.fileUrl} fileName={msg.fileName} fileType={msg.fileType} isImage={msg.isImage} />}
-                    
+
                     {msg.reactions && msg.reactions.length > 0 && (
                       <ReactionBubbles reactions={msg.reactions} currentUsername={currentUsername} onReact={(emoji) => msg._id && onReact(msg._id, emoji)} />
                     )}
 
-                    <div className="text-[10px] text-gray-400 mt-1 -mb-0.5 text-right font-medium select-none opacity-75">
+                    <div style={{ fontSize: "10px", color: "#9ca3af", marginTop: "4px", textAlign: "right", fontWeight: 500, opacity: 0.75 }}>
                       {msg.time}
                     </div>
                   </div>
@@ -229,15 +283,15 @@ export default function MessageList({
         })}
       </div>
 
-      {/* Typing Indicator Strip Wrap Container */}
+      {/* Typing indicator */}
       {typingUser && (
-        <div className="flex items-end gap-2.5 max-w-[70%] mt-3 animate-pulse duration-1000">
+        <div style={{ display: "flex", alignItems: "flex-end", gap: "10px", maxWidth: "70%", marginTop: "12px" }}>
           <Avatar name={typingUser.name} size={32} />
           <div>
-            <div className="text-[12px] text-[#5288c1] mb-1 ml-1.5 font-semibold">
+            <div style={{ fontSize: "12px", color: "#5288c1", marginBottom: "4px", marginLeft: "6px", fontWeight: 600 }}>
               @{typingUser.name}
             </div>
-            <div className="bg-[#182533] border border-[#101921] rounded-2xl rounded-tl-[4px] shadow-md px-3.5 py-2.5">
+            <div style={{ ...receivedBubbleStyle, padding: "10px 14px" }}>
               <TypingDots />
             </div>
           </div>
@@ -248,4 +302,3 @@ export default function MessageList({
     </div>
   );
 }
-

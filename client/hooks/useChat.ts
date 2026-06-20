@@ -1,9 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
-import { ChatMessage, TypingUser, MessageStatus } from "../types/chat";
 
 const SOCKET_URL = "http://localhost:4000";
-const DEFAULT_ROOM = "general";
 
 export const getAvatarColor = (name: string): string => {
   const colors = [
@@ -22,302 +20,43 @@ export const getAvatarColor = (name: string): string => {
 
 export function useChat(username: string) {
   const socketRef = useRef<Socket | null>(null);
-
-  const [connected, setConnected]     = useState(false);
-  const [messages, setMessages]       = useState<ChatMessage[]>([]);
-  const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
-  const [typingUser, setTypingUser]   = useState<TypingUser | null>(null);
-  const [currentRoom, setCurrentRoom] = useState(DEFAULT_ROOM);
-  const [rooms, setRooms] = useState<{ id: string; name: string; memberCount: number}[]>([]);
-  // Add this state near the top with other states
   const [socket, setSocket] = useState<Socket | null>(null);
+  const [connected, setConnected] = useState(false);
+  const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
+  const [allUsers, setAllUsers] = useState<string[]>([]);
+  const [rooms, setRooms] = useState<{ id: string; name: string; memberCount: number }[]>([]);
 
   useEffect(() => {
-    // Only connect once username is set
     if (!username) return;
 
-    const socket = io(SOCKET_URL, {
+    const sock = io(SOCKET_URL, {
       timeout: 5000,
       reconnectionAttempts: 3,
     });
-    socketRef.current = socket;
-    // setSocket(socket);
+    socketRef.current = sock;
 
-    socket.on("connect", () => {
+    sock.on("connect", () => {
       setConnected(true);
-      setSocket(socket); // inside callback
-
-      // Register user then join default room
-      socket.emit("register_user", username);
-      socket.emit("join_room", DEFAULT_ROOM);
-      setCurrentRoom(DEFAULT_ROOM);
+      setSocket(sock);
+      sock.emit("register_user", username);
     });
 
-    socket.on("disconnect", () => setConnected(false));
+    sock.on("disconnect", () => setConnected(false));
+    sock.on("online_users", (users: string[]) => setOnlineUsers(users));
+    sock.on("all_users", (users: string[]) => setAllUsers(users));
+    sock.on("room_list", (roomList) => setRooms(roomList));
 
-    socket.on("online_users", (users: string[]) => setOnlineUsers(users));
-
-    // Load history sent after joining room
-  socket.on("chat_history", ({ messages: history }: {
-    messages: Array<{
-      _id: string;        
-      text: string;
-      username: string;
-      time?: string;
-      createdAt?: string;
-      reactions?: { emoji: string; count: number; usernames: string[] }[]; 
-      // 
-      fileUrl?: string;
-      fileName?: string;
-      fileType?: string;
-      isImage?: boolean;
-      audioUrl?: string;
-      audioDuration?: number;
-      fromUsername?: string; // for forwarded messages
-      caption?: string;      // for forwarded messages
-    }>;
-    hasMore: boolean;
-  }) => {
-    setMessages(
-      history.map((m) => ({
-        _id:      m._id,           
-        text:     m.text,
-        fromSelf: m.username === username,
-        time:     m.time ?? new Date(m.createdAt ?? "").toLocaleTimeString([], {
-          hour: "2-digit", minute: "2-digit",
-        }),
-        username:  m.username,
-        color:     getAvatarColor(m.username),
-        reactions: m.reactions ?? [], 
-        fileUrl: m.fileUrl,
-        fileName: m.fileName,
-        fileType: m.fileType,
-        isImage: m.isImage,
-        audioUrl:      m.audioUrl,
-        audioDuration: m.audioDuration,
-        status: "seen" as MessageStatus, // history is always seen
-        fromUsername: m.fromUsername,
-        caption: m.caption,
-      }))
-    );
-  });
-
-    // Reaction updated by anyone in the room
-    socket.on("message_reaction_updated", ({ messageId, reactions}) => {
-      setMessages((prev) =>
-      prev.map((msg) =>
-        msg._id === messageId ? { ...msg, reactions } : msg
-        )
-      );
-    })
-
-    // Now receives full shape from backend
-    socket.on("receive_message", (data: { 
-      _id: string;
-      text: string; 
-      tempId?: string; //
-      username: string; 
-      time: string; 
-      fileUrl?:  string;  //  add
-      fileName?: string;  //  add
-      fileType?: string;  //  add
-      isImage?:  boolean; //  add
-      audioUrl?: string;    //  add
-      audioDuration?: number; //  add
-
-      replyTo?: { _id: string; username: string; text: string };
-      forwarded?: boolean;
-      fromUsername?: string; // for forwarded messages
-      caption?: string;      // for forwarded messages
-    }) => {
-      if (data.username === username) {
-        // Our own message confirmed by server - update from tempId to real _id
-        setMessages((prev) => 
-          prev.map((msg) => 
-            msg._id === data.tempId 
-              ? { 
-                ...msg, 
-                _id: data._id, 
-                status: "sent" as MessageStatus 
-              } 
-            : msg
-          )
-        );
-        return;
-      }
-
-      // Someone else's message
-      const newMsg: ChatMessage = {
-        _id: data._id,
-        text: data.text,
-        fromSelf: false,
-        time: data.time,
-        username: data.username,
-        color: getAvatarColor(data.username),
-        reactions: [],
-        status: "delivered" as const, //  new messages are at least delivered
-        fileUrl: data.fileUrl,
-        fileName: data.fileName,
-        fileType: data.fileType,
-        isImage: data.isImage,
-        audioUrl: data.audioUrl,
-        audioDuration: data.audioDuration,
-        replyTo:   data.replyTo,
-        forwarded: data.forwarded ?? false,
-        fromUsername: data.fromUsername ?? undefined,
-        caption: data.caption ?? "",
-      };
-      
-      setMessages((prev) => [...prev, newMsg]);
-
-      // Tell server we received it (for seen status)
-      socketRef.current?.emit("message_delivered", {
-        messageId: data._id,
-        to: data.username,
-      });
-    });
-// =======================================================================
-    // Message delivered to recipient
-    socket.on("message_delivered", ({ messageId }: { messageId: string }) => {
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg._id === messageId && (msg.status === "sent" || msg.status === "sending")
-            ? { ...msg, status: "delivered" as MessageStatus }  // cast
-            : msg
-        )
-      );
-    });
-
-    // Message seen by recipient
-    socket.on("messages_seen", ({ messageIds } : { messageIds: string[] }) =>{
-      setMessages((prev) => prev.map((msg) =>
-        messageIds.includes(msg._id ?? "")  && msg.fromSelf 
-          ? { ...msg, status: "seen" as MessageStatus } 
-          : msg
-        )
-      );
-    });
-
-    // Typing now receives plain string (backend emits username string)
-    socket.on("user_typing", (name: string) =>
-      setTypingUser({ name, color: getAvatarColor(name) })
-    );
-    socket.on("user_stop_typing", () => setTypingUser(null));
-
-// =======================================================================
-    socket.on("room_list", (roomList) => setRooms(roomList));
-    socket.on("room_created", (roomId: string) => {
-      socket.emit("join_room", roomId);
-      setCurrentRoom(roomId);
-      setMessages([]);
-    });
-    socket.on("room_exists", (roomId: string) => {
-      alert(`Room "${roomId}" already exists!`);
-    })
-// =======================================================================
     return () => {
-      socket.emit("unregister_user");
-      socket.disconnect();
+      sock.emit("unregister_user");
+      sock.disconnect();
+      socketRef.current = null;
       setSocket(null);
     };
-  }, [username]); //  Re-run if username changes
-
-  const sendMessage = (
-    text: string, 
-    file?: {
-      fileUrl: string;
-      fileName: string;
-      fileType: string;
-      isImage: boolean;
-    },
-    audio?: { audioUrl: string; audioDuration: number},
-    replyTo?: { _id: string; username: string; text: string },
-    forwarded?: boolean,
-    fromUsername?: string, // for forwarded messages
-    caption?: string,      // for forwarded messages
-  ) => {
-    const safeText = text ?? "";
-    if (!safeText.trim() && !file && !audio) return;
-
-    if (!socketRef.current) return;
-
-    const tempId = `temp-${Date.now()}`;
-    
-    setMessages((prev) => [
-      ...prev,
-      {
-        _id: tempId,
-        text: text || "",
-        fromSelf: true,
-        time: new Date().toLocaleTimeString([], {
-          hour: "2-digit", minute: "2-digit",
-        }),
-        username,
-
-        color: getAvatarColor(username),
-        reactions: [],
-        status: "sending", // sending
-
-        replyTo,
-        forwarded,
-        fromUsername,
-        caption,
-
-        ...file,
-        ...audio,
-      },
-    ]);
-
-    //  Include roomId in payload
-    socketRef.current.emit("send_message", { 
-      text, 
-      username, 
-      roomId: currentRoom,
-      tempId, // pass tempId so server can include it in the ack
-      replyTo,
-      forwarded,
-      fromUsername,
-      caption,
-      ...file, // spreads fileUrl, fileName, fileType, isImage if present
-      ...audio, // spreads audioUrl and audioDuration if present
-    });
-    socketRef.current.emit("stop_typing", currentRoom); //  pass roomId
-  };
-
-  const emitTyping = (value: string) => {
-    if (!socketRef.current) return;
-    if (value.length > 0) {
-      //  Send object with username + roomId
-      socketRef.current.emit("typing", { username, roomId: currentRoom });
-    } else {
-      socketRef.current.emit("stop_typing", currentRoom); //  pass roomId
-    }
-  };
-
-  const markRoomSeen = (messageIds: string[]) => {
-    if (!socketRef.current || messageIds.length === 0) return;
-    socketRef.current.emit("messages_seen", {
-      messageIds,
-      roomId: currentRoom,
-    });
-  };
-
-  const joinRoom = (roomId: string) => {
-    if (!socketRef.current) return;
-    socketRef.current.emit("join_room", roomId);
-    setCurrentRoom(roomId);
-    setMessages([]); // clear messages while history loads
-  };
+  }, [username]);
 
   const createRoom = (roomName: string) => {
-    if (!socketRef.current) return;
-    socketRef.current.emit("create_room", roomName);
+    socketRef.current?.emit("create_room", roomName);
   };
-
-  const addReaction = (messageId: string, emoji: string, roomId: string) => {
-    if (!socketRef.current) return;
-    socketRef.current.emit("add_reaction", { messageId, emoji, username, roomId});
-  }
 
   const logout = () => {
     if (socketRef.current) {
@@ -325,30 +64,19 @@ export function useChat(username: string) {
       socketRef.current.disconnect();
       socketRef.current = null;
     }
-    setMessages([]);
     setOnlineUsers([]);
-    setTypingUser(null);
+    setAllUsers([]);
     setConnected(false);
+    setSocket(null);
   };
 
   return {
     socket,
     connected,
-    messages,
     onlineUsers,
-    typingUser,
-    currentRoom,
-
-    rooms, //
-
-    sendMessage,
-    emitTyping,
-    markRoomSeen, // seen
-    joinRoom, 
-
-    createRoom, //
-    addReaction, //
+    allUsers,
+    rooms,
+    createRoom,
     logout,
-  
   };
 }

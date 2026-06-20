@@ -1,7 +1,7 @@
 import { useRef } from "react";
 import { useState } from "react";
-import { useLongPress } from "../hooks/useLongPress";
-import ForwardPicker from "./ForwardPicker";
+import { useLongPress } from "../../hooks/useLongPress";
+import ForwardPicker from "../shared/ForwardPicker";
 
 const EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "😡"];
 

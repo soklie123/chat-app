@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { CallState, CallInfo } from "../types/chat";
-import Avatar from "./Avatar";
+import { CallState, CallInfo } from "../../types/chat";
+import Avatar from "../shared/Avatar";
 
 import {
   MdMic, MdMicOff,
@@ -85,12 +85,6 @@ export default function CallScreen({
       }
     }
   }, [callState, remoteStream]); // add remoteStream as dependency
-
-  useEffect(() => {
-  if (callState === "idle") {
-    setCallDuration(0);
-  }
-}, [callState]);
 
   useEffect(() => {
     if (localVideoRef.current && localStream) {

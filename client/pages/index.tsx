@@ -3,15 +3,15 @@ import { useChat } from "../hooks/useChat";
 import { useDM } from "../hooks/useDM";
 import { useNotifications } from "../hooks/useNotifications";
 import { useCall } from "../hooks/useCall"
-import NotificationBanner, { useToasts } from "../components/NotificationBanner";
-import Avatar from "../components/Avatar";
-import UsernameGate from "../components/UsernameGate";
-import Sidebar from "../components/Sidebar";
-import MessageList from "../components/MessageList";
-import InputBar from "../components/InputBar";
-import DMPanel from "../components/DMPanel";
-import CallScreen from "../components/CallScreen";
-import ForwardBar from "../components/ForwardBar";
+import NotificationBanner, { useToasts } from "../components/shared/NotificationBanner";
+import Avatar from "../components/shared/Avatar";
+import UsernameGate from "../components/shared/UsernameGate";
+import Sidebar from "../components/layout/Sidebar";
+import MessageList from "../components/chat/MessageList";
+import InputBar from "../components/shared/InputBar";
+import DMPanel from "../components/dm/DMPanel";
+import CallScreen from "../components/call/CallScreen";
+import ForwardBar from "../components/shared/ForwardBar";
 
 export default function Home() {
   const [username, setUsername] = useState("");

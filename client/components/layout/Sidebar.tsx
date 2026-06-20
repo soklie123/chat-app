@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { DMConversation } from "../types/chat";
-import DMList from "./DMList";
+import { DMConversation } from "../../types/chat";
+import DMList from "../dm/DMList";
 
 type Room = { id: string; name: string; memberCount: number };
 

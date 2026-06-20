@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { ChatMessage, TypingUser } from "../types/chat";
-import Avatar from "./Avatar";
-import TypingDots from "./TypingDots";
-import FilePreview from "./FilePreview";
-import AudioPlayer from "./AudioPlayer";
-import CallEventBubble from "./CallEventBubble";
+import { ChatMessage, TypingUser } from "../../types/chat";
+import Avatar from "../shared/Avatar";
+import TypingDots from "../shared/TypingDots";
+import FilePreview from "../shared/FilePreview";
+import AudioPlayer from "../shared/AudioPlayer";
+import CallEventBubble from "../call/CallEventBubble";
 import MessageStatusIcon from "./MessageStatus";
-import ReplyPreview from "./ReplyPreview";
+import ReplyPreview from "./Replypreview";
 import { MessageBubble } from "./MessageBubble";
 
 function ReactionBubbles({

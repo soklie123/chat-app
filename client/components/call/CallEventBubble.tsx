@@ -7,7 +7,7 @@ import {
 } from "react-icons/md";
 
 
-import { CallType } from "../types/chat";
+import { CallType } from "../../types/chat";
 
 type CallEvent = "missed" | "ended" | "rejected";
 

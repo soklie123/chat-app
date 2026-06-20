@@ -1,4 +1,4 @@
-import { getAvatarColor } from "../hooks/useChat";
+import { getAvatarColor } from "../../hooks/useChat";
 
 export default function Avatar({
     name,

@@ -1,175 +1,198 @@
-import { useState } from "react";
+
+import { useState, useRef, useEffect } from "react";
 import { DMConversation } from "../../types/chat";
 import DMList from "../dm/DMList";
 
-type Room = { id: string; name: string; memberCount: number };
-
 export default function Sidebar({
-  rooms,
-  currentRoom,
   username,
-  onJoin,
-  onCreate,
   onLogout,
   onlineUsers,
   conversations,
   activeDM,
   onOpenDM,
+  onCreateGroup,   
+  onCreateChannel, 
 }: {
-  rooms: Room[];
-  currentRoom: string;
   username: string;
-  onJoin: (id: string) => void;
-  onCreate: (name: string) => void;
   onLogout: () => void;
   onlineUsers: string[];
   conversations: DMConversation[];
   activeDM: string | null;
   onOpenDM: (username: string) => void;
+  onCreateGroup: (name: string, members: string[]) => void;
+  onCreateChannel: (name: string) => void;
 }) {
-  const [creating, setCreating] = useState(false);
-  const [newRoom, setNewRoom] = useState("");
+  const [creatingType, setCreatingType] = useState<"group" | "channel" | null>(null);
+  const [newName, setNewName] = useState("");
+  const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
+  const [showMenu, setShowMenu] = useState(false);
+  const [isNightMode, setIsNightMode] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
-  const handleCreate = () => {
-    if (!newRoom.trim()) return;
-    onCreate(newRoom.trim());
-    setNewRoom("");
-    setCreating(false);
+  const toggleMemberSelection = (user: string) => {
+    if (selectedMembers.includes(user)) {
+      setSelectedMembers(selectedMembers.filter((m) => m !== user));
+    } else {
+      setSelectedMembers([...selectedMembers, user]);
+    }
   };
 
-  const totalUnread = conversations.reduce((sum, c) => sum + c.unread, 0);
+  const handleCreateChat = () => {
+    if (!newName.trim()) return;
+    
+    if (creatingType === "group") {
+      onCreateGroup(newName.trim(), selectedMembers);
+    } else if (creatingType === "channel") {
+      onCreateChannel(newName.trim());
+    }
+    
+    setNewName("");
+    setSelectedMembers([]);
+    setCreatingType(null);
+  };
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setShowMenu(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   return (
-    <div className="w-[240px] h-full bg-[#1a2332] flex flex-col flex-shrink-0 border-r border-white/5">
-
-      {/* Header */}
-      <div className="px-4 pt-5 pb-4 border-b border-white/8">
-        <div className="flex items-center gap-2.5 mb-3">
-          <div className="w-8 h-8 rounded-lg bg-[#0088cc] flex items-center justify-center flex-shrink-0">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    <div className="w-[320px] h-full bg-[#17212b] flex flex-col flex-shrink-0 border-r border-[#101921] font-sans antialiased relative text-white selection:bg-[#5288c1]/30">
+      
+      {/* Top Header Bar */}
+      <div className="p-2.5 flex items-center gap-2 bg-[#17212b]">
+        <div className="relative" ref={menuRef}>
+          <button 
+            onClick={() => setShowMenu(!showMenu)}
+            className={`w-[42px] h-[42px] flex items-center justify-center rounded-xl text-[#6c7883] transition-all duration-200 ${
+              showMenu ? "bg-[#202b36] text-[#5288c1]" : "hover:bg-[#202b36] active:scale-95"
+            }`}
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="4" y1="12" x2="20" y2="12"></line>
+              <line x1="4" y1="6" x2="20" y2="6"></line>
+              <line x1="4" y1="18" x2="20" y2="18"></line>
             </svg>
-          </div>
-          <span className="text-white font-semibold text-[15px] tracking-tight">ChatApp</span>
-        </div>
-        <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-white/5">
-          <div className="w-6 h-6 rounded-full bg-[#0088cc] flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0">
-            {username[0]?.toUpperCase()}
-          </div>
-          <span className="text-white/60 text-[12px] truncate">@{username}</span>
-          <span className="ml-auto w-2 h-2 rounded-full bg-green-400 flex-shrink-0" />
-        </div>
-      </div>
+          </button>
 
-      <div className="flex-1 overflow-y-auto py-3 px-2 space-y-4">
+          {/* Telegram Dropdown Popup Menu */}
+          {showMenu && (
+            <div className="absolute left-1 mt-2 w-[290px] bg-[#17212b] rounded-2xl shadow-[0_8px_30px_rgba(0,0,0,0.5)] border border-[#101921] py-2 z-50 text-white">
+              <div className="px-4.5 py-4 border-b border-[#101921] flex flex-col gap-3">
+                <div className="w-14 h-14 rounded-full bg-[#5288c1] flex items-center justify-center text-white text-xl font-semibold">
+                  {username[0]?.toUpperCase()}
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[16px] font-semibold truncate">@{username}</span>
+                </div>
+              </div>
 
-        {/* Rooms */}
-        <div>
-          <div className="text-white/30 text-[10px] uppercase tracking-widest px-2 mb-1.5 font-medium">
-            Rooms
-          </div>
-          {rooms.map((room) => (
-            <button
-              key={room.id}
-              onClick={() => onJoin(room.id)}
-              className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-[13px] mb-0.5 transition-all ${
-                currentRoom === room.id && !activeDM
-                  ? "bg-[#0088cc] text-white"
-                  : "text-white/50 hover:bg-white/8 hover:text-white/80"
-              }`}
-            >
-              <span className="flex items-center gap-2">
-                <span className="text-white/30">#</span>
-                {room.name}
-              </span>
-              {room.memberCount > 0 && (
-                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
-                  currentRoom === room.id && !activeDM
-                    ? "bg-white/20 text-white"
-                    : "bg-white/10 text-white/40"
-                }`}>
-                  {room.memberCount}
-                </span>
-              )}
-            </button>
-          ))}
-
-          {creating ? (
-            <div className="mt-1.5 px-1">
-              <input
-                autoFocus
-                className="w-full px-3 py-2 rounded-lg bg-white/8 text-white text-[13px] outline-none placeholder:text-white/25 border border-white/15 focus:border-[#0088cc] transition-colors"
-                placeholder="room-name"
-                value={newRoom}
-                onChange={(e) => setNewRoom(e.target.value.toLowerCase().replace(/\s+/g, "-"))}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleCreate();
-                  if (e.key === "Escape") setCreating(false);
-                }}
-              />
-              <div className="flex gap-1.5 mt-1.5">
-                <button onClick={handleCreate} className="flex-1 py-1.5 rounded-lg bg-[#0088cc] text-white text-[12px] font-medium hover:bg-[#0077b6] transition-colors">Create</button>
-                <button onClick={() => setCreating(false)} className="flex-1 py-1.5 rounded-lg bg-white/8 text-white/50 text-[12px] hover:bg-white/15 transition-colors">Cancel</button>
+              <div className="py-1.5 px-2 space-y-[2px]">
+                <button 
+                  onClick={() => { setShowMenu(false); setCreatingType("group"); }}
+                  className="w-full flex items-center gap-4 px-3 py-2.5 rounded-xl text-[14px] text-left hover:bg-[#202b36] text-[#e1e5e9]"
+                >
+                  <span>New Group</span>
+                </button>
+                <button 
+                  onClick={() => { setShowMenu(false); setCreatingType("channel"); }}
+                  className="w-full flex items-center gap-4 px-3 py-2.5 rounded-xl text-[14px] text-left hover:bg-[#202b36] text-[#e1e5e9]"
+                >
+                  <span>New Channel</span>
+                </button>
+                <button onClick={onLogout} className="w-full flex items-center gap-4 px-3 py-2.5 rounded-xl text-[14px] text-left text-red-400 hover:bg-red-500/10">
+                  <span>Log Out</span>
+                </button>
               </div>
             </div>
-          ) : (
-            <button
-              onClick={() => setCreating(true)}
-              className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-white/30 hover:text-white/60 hover:bg-white/8 text-[13px] mt-0.5 transition-all"
-            >
-              <span className="text-base leading-none">+</span>
-              <span>New Room</span>
-            </button>
           )}
         </div>
 
-        {/* Online users */}
-        {onlineUsers.filter((u) => u !== username).length > 0 && (
-          <div>
-            <div className="text-white/30 text-[10px] uppercase tracking-widest px-2 mb-1.5 font-medium">
-              Online
-            </div>
-            {onlineUsers.filter((u) => u !== username).map((u) => (
-              <button
-                key={u}
-                onClick={() => onOpenDM(u)}
-                className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-white/50 hover:bg-white/8 hover:text-white/80 text-[13px] transition-all"
-              >
-                <span className="w-2 h-2 rounded-full bg-green-400 flex-shrink-0" />
-                {u}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* DMs */}
-        <DMList
-          conversations={conversations}
-          activeDM={activeDM}
-          onOpen={onOpenDM}
-          onlineUsers={onlineUsers}
-        />
+        <div className="flex-1 relative flex items-center">
+          <input
+            type="text"
+            readOnly
+            placeholder="Search"
+            className="w-full bg-[#24303f] text-[#ffffff] placeholder-[#6c7883] text-[15px] rounded-xl pl-10 pr-4 h-[42px] outline-none"
+          />
+          <svg className="absolute left-3.5 text-[#6c7883]" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+        </div>
       </div>
 
-      {/* Logout */}
-      <div className="px-3 py-3 border-t border-white/8">
-        <button
-          onClick={onLogout}
-          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-white/30 hover:text-red-400 hover:bg-white/8 text-[13px] transition-all"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-            <polyline points="16 17 21 12 16 7" />
-            <line x1="21" y1="12" x2="9" y2="12" />
-          </svg>
-          Logout
-          {totalUnread > 0 && (
-            <span className="ml-auto w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
-              {totalUnread > 9 ? "9+" : totalUnread}
-            </span>
+      {/* Creation Interface Panel */}
+      {creatingType && (
+        <div className="mx-3 mb-2 p-3 rounded-xl border border-[#101921] bg-[#202b36] flex flex-col gap-2 max-h-[280px] overflow-hidden">
+          <div className="text-[12px] font-bold text-[#5288c1] uppercase tracking-wider">
+            New {creatingType === "group" ? "Group Chat" : "Channel Feed"}
+          </div>
+          <input
+            autoFocus
+            className="w-full px-3 py-2 rounded-lg bg-[#17212b] border border-[#101921] text-white text-[14px] outline-none focus:border-[#5288c1]"
+            placeholder={creatingType === "group" ? "Enter group name..." : "Enter channel title..."}
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+          />
+
+          {/* Member Invitation Selection List */}
+          {creatingType === "group" && (
+            <div className="flex-1 flex flex-col min-h-0 mt-1">
+              <span className="text-[11px] text-[#6c7883] mb-1 font-semibold">Select contacts to invite:</span>
+              <div className="overflow-y-auto space-y-1 pr-1 flex-1 bg-[#17212b] p-1.5 rounded-lg border border-[#101921]">
+                {onlineUsers
+                  .filter((u) => u !== username)
+                  .map((user) => {
+                    const isChecked = selectedMembers.includes(user);
+                    return (
+                      <div 
+                        key={user}
+                        onClick={() => toggleMemberSelection(user)}
+                        className="flex items-center justify-between p-1.5 rounded-md hover:bg-[#202b36] cursor-pointer transition-colors"
+                      >
+                        <span className="text-[13px] font-medium text-gray-200">@{user}</span>
+                        <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${
+                          isChecked ? "bg-[#5288c1] border-[#5288c1]" : "border-gray-500"
+                        }`}>
+                          {isChecked && <span className="text-[10px] text-white font-bold">✓</span>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                {onlineUsers.filter((u) => u !== username).length === 0 && (
+                  <div className="text-[12px] text-gray-500 text-center py-2">No active contacts online</div>
+                )}
+              </div>
+            </div>
           )}
-        </button>
+
+          <div className="flex gap-2 mt-1.5">
+            <button onClick={handleCreateChat} className="flex-1 py-1.5 rounded-lg bg-[#5288c1] text-white text-[13px] font-semibold hover:bg-[#4376aa]">
+              Create
+            </button>
+            <button onClick={() => { setCreatingType(null); setSelectedMembers([]); }} className="flex-1 py-1.5 rounded-lg bg-gray-700 text-gray-200 text-[13px]">
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Unified Feed View Layout */}
+      <div className="flex-1 overflow-y-auto px-1.5 py-1">
+        <DMList 
+          conversations={conversations} 
+          activeDM={activeDM} 
+          onOpen={onOpenDM} 
+          onlineUsers={onlineUsers} 
+        />
       </div>
     </div>
   );
 }
+

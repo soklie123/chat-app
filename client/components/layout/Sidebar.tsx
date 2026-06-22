@@ -3,6 +3,8 @@ import { DMConversation } from "../../types/chat";
 import DMList from "../dm/DMList";
 import { getAvatarColor } from "../../hooks/useChat";
 
+type RoomSummary = { id: string; name: string; memberCount: number; members: string[] };
+
 export default function Sidebar({
   username,
   onLogout,
@@ -10,7 +12,10 @@ export default function Sidebar({
   allUsers,
   conversations,
   activeDM,
+  rooms,
+  currentRoom,
   onOpenDM,
+  onOpenRoom,
   onCreateGroup,
 }: {
   username: string;
@@ -19,7 +24,10 @@ export default function Sidebar({
   allUsers: string[];
   conversations: DMConversation[];
   activeDM: string | null;
+  rooms: RoomSummary[];
+  currentRoom: string | null;
   onOpenDM: (username: string) => void;
+  onOpenRoom: (roomId: string) => void;
   onCreateGroup: (name: string, members: string[]) => void;
 }) {
   const [creatingGroup, setCreatingGroup] = useState(false);
@@ -71,6 +79,74 @@ export default function Sidebar({
   const filteredOffline = offlineOthers.filter(u =>
     u.toLowerCase().includes(searchQuery.toLowerCase())
   );
+  const filteredRooms = rooms.filter(r =>
+    r.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const renderRoomRow = (room: RoomSummary) => {
+    const isActive = currentRoom === room.id;
+    return (
+      <button
+        key={room.id}
+        onClick={() => onOpenRoom(room.id)}
+        style={{
+          width: "100%",
+          display: "flex",
+          alignItems: "center",
+          gap: "12px",
+          padding: "8px 10px",
+          background: isActive ? "#2b5278" : "transparent",
+          border: "none",
+          borderRadius: "10px",
+          cursor: "pointer",
+          marginBottom: "1px",
+          transition: "background 0.15s",
+          textAlign: "left",
+        }}
+        onMouseEnter={e => {
+          if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = "#202b36";
+        }}
+        onMouseLeave={e => {
+          if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = "transparent";
+        }}
+      >
+        <div style={{
+          width: 46,
+          height: 46,
+          borderRadius: "50%",
+          background: "#5288c1",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: "19px",
+          fontWeight: 600,
+          color: "#fff",
+          flexShrink: 0,
+        }}>
+          #
+        </div>
+        <div style={{ minWidth: 0 }}>
+          <div style={{
+            fontSize: "14.5px",
+            fontWeight: 600,
+            color: "#e8ecf0",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}>
+            {room.name}
+          </div>
+          <div style={{
+            fontSize: "12px",
+            color: "#6c7883",
+            marginTop: "1px",
+          }}>
+            {room.memberCount} member{room.memberCount === 1 ? "" : "s"}
+          </div>
+        </div>
+      </button>
+    );
+  };
 
   const renderUserRow = (user: string, isOnline: boolean) => (
     <button
@@ -483,10 +559,18 @@ export default function Sidebar({
         </div>
       )}
 
-      {/* ── Conversation + User List ── */}
+      {/* ── Conversation + Room + User List ── */}
       <div style={{ flex: 1, overflowY: "auto", padding: "4px 6px" }}>
 
-        {/* Existing conversations (DMs + groups) */}
+        {/* Groups */}
+        {filteredRooms.length > 0 && (
+          <>
+            {sectionLabel("Groups")}
+            {filteredRooms.map(renderRoomRow)}
+          </>
+        )}
+
+        {/* Existing conversations (DMs) */}
         {filteredConversations.length > 0 && (
           <>
             {sectionLabel("Recent")}
@@ -516,7 +600,8 @@ export default function Sidebar({
         )}
 
         {/* Empty state */}
-        {filteredConversations.length === 0 &&
+        {filteredRooms.length === 0 &&
+          filteredConversations.length === 0 &&
           filteredOnline.length === 0 &&
           filteredOffline.length === 0 && (
           <div style={{

@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useDM } from "../hooks/useDM";
+import { useRoom } from "../hooks/useRoom";
 import { useCall } from "../hooks/useCall";
 import { useChat } from "../hooks/useChat";
 import { useNotifications } from "../hooks/useNotifications";
@@ -8,10 +9,21 @@ import NotificationBanner, { useToasts } from "../components/shared/Notification
 import UsernameGate from "../components/shared/UsernameGate";
 import Sidebar from "../components/layout/Sidebar";
 import DMPanel from "../components/dm/DMPanel";
+import RoomView from "../components/chat/RoomView";
 import CallScreen from "../components/call/CallScreen";
 
 type ReplyDraft = { _id: string; username: string; text: string } | null;
 type ForwardDraft = { text: string; fromUsername: string } | null;
+type SendFile = {
+  fileUrl: string;
+  fileName: string;
+  fileType: string;
+  isImage: boolean;
+};
+type AudioDraft = {
+  audioUrl: string;
+  audioDuration: number | string;
+};
 
 export default function Home() {
   const [username, setUsername] = useState("");
@@ -39,6 +51,18 @@ export default function Home() {
     addCallEventMessage,
   } = useDM(socket, username);
 
+  const {
+    currentRoom,
+    roomMessages,
+    typingUser: roomTyping,
+    openRoom,
+    closeRoom,
+    sendRoomMessage,
+    emitTyping: emitRoomTyping,
+    markRoomSeen,
+    reactToRoomMessage,
+  } = useRoom(socket, username);
+
   const activeDMRef = useRef<string | null>(null);
   useEffect(() => {
     activeDMRef.current = activeDM;
@@ -63,29 +87,50 @@ export default function Home() {
   });
 
   const [dmReplyTo, setDMReplyTo] = useState<ReplyDraft>(null);
+  const [roomReplyTo, setRoomReplyTo] = useState<ReplyDraft>(null);
   const [forwardData, setForwardData] = useState<ForwardDraft>(null);
+
+  // Opens a DM and makes sure a room isn't shown at the same time.
+  const handleOpenDM = (otherUsername: string) => {
+    closeRoom();
+    openDM(otherUsername);
+  };
+
+  // Opens a room and makes sure a DM isn't shown at the same time.
+  const handleOpenRoom = (roomId: string) => {
+    closeDM();
+    openRoom(roomId);
+  };
 
   const handleForward = (
     text: string,
     fromUsername: string,
     to: string,
-    _isRoom: boolean
+    isRoom: boolean
   ) => {
-    openDM(to);
+    if (isRoom) {
+      handleOpenRoom(to);
+    } else {
+      handleOpenDM(to);
+    }
     setTimeout(() => setForwardData({ text, fromUsername }), 200);
   };
 
   const sendForward = (caption: string) => {
     if (!forwardData) return;
-    sendDM(
-      forwardData.text,
-      undefined,
-      undefined,
-      undefined,
-      true,
-      forwardData.fromUsername,
-      caption.trim()
-    );
+    if (currentRoom) {
+      sendRoomMessage(caption.trim() || forwardData.text);
+    } else {
+      sendDM(
+        forwardData.text,
+        undefined,
+        undefined,
+        undefined,
+        true,
+        forwardData.fromUsername,
+        caption.trim()
+      );
+    }
     setForwardData(null);
   };
 
@@ -93,24 +138,82 @@ export default function Home() {
   const { toasts, addToast, removeToast } = useToasts();
 
   useUnseenNotifications({
-    messages: [],
+    messages: roomMessages,
     dmMessages,
     conversations,
     activeDM,
-    currentRoom: "",
+    currentRoom: currentRoom ?? "",
     notifyMessage: () => {},
     notifyDM,
     addToast,
   });
 
+  /**
+   * Creates the room, then immediately joins it for the creator before
+   * inviting members.
+   *
+   * The backend's create_room handler only creates the Room document and
+   * adds the creator's username to the in-memory member Set — it never
+   * calls socket.join(roomId) for the creator's own socket. Without
+   * explicitly joining here, the creator would be tracked as a "member"
+   * but not actually be in the socket.io room, so receive_message
+   * broadcasts would never reach them. Listening for "room_created" once
+   * and joining right after avoids racing ahead of the server.
+   */
   const handleCreateGroup = (name: string, members: string[]) => {
-    createRoom(name);
-    if (socket && members.length > 0) {
-      // slight delay so room_created fires first
-      setTimeout(() => {
-        socket.emit("invite_to_group", { room: name, users: members });
-      }, 300);
+    const roomId = name.trim().toLowerCase().replace(/\s+/g, "-");
+
+    if (socket) {
+      const onCreated = (createdRoomId: string) => {
+        if (createdRoomId !== roomId) return;
+        socket.off("room_created", onCreated);
+        handleOpenRoom(createdRoomId);
+        if (members.length > 0) {
+          // slight delay so join_room resolves server-side first
+          setTimeout(() => {
+            socket.emit("invite_to_group", { room: createdRoomId, users: members });
+          }, 300);
+        }
+      };
+      socket.on("room_created", onCreated);
     }
+
+    createRoom(name);
+  };
+
+  const handleSend = (text: string, file?: SendFile, audio?: AudioDraft) => {
+    if (!text.trim() && !file && !audio) return;
+    const normalizedAudio = audio
+      ? {
+          ...audio,
+          audioDuration:
+            typeof audio.audioDuration === "string"
+              ? Number(audio.audioDuration)
+              : audio.audioDuration,
+        }
+      : undefined;
+
+    if (currentRoom) {
+      sendRoomMessage(text ?? "", file, normalizedAudio, roomReplyTo ?? undefined);
+      setRoomReplyTo(null);
+      return;
+    }
+
+    sendDM(text ?? "", file, normalizedAudio, dmReplyTo ?? undefined);
+    setDMReplyTo(null);
+  };
+
+  const handleReact = (messageId: string, emoji: string) => {
+    if (currentRoom) {
+      reactToRoomMessage(messageId, emoji);
+      return;
+    }
+    socket?.emit("add_dm_reaction", {
+      messageId,
+      emoji,
+      username,
+      to: activeDM,
+    });
   };
 
   if (!username) return <UsernameGate onJoin={setUsername} />;
@@ -154,8 +257,8 @@ export default function Home() {
       <NotificationBanner
         toasts={toasts}
         onDismiss={removeToast}
-        onOpenDM={openDM}
-        onJoinRoom={() => {}}
+        onOpenDM={handleOpenDM}
+        onJoinRoom={handleOpenRoom}
       />
 
       <div style={{
@@ -172,43 +275,46 @@ export default function Home() {
           allUsers={allUsers}
           conversations={conversations}
           activeDM={activeDM}
-          onOpenDM={openDM}
+          rooms={rooms}
+          currentRoom={currentRoom}
+          onOpenDM={handleOpenDM}
+          onOpenRoom={handleOpenRoom}
           onCreateGroup={handleCreateGroup}
         />
 
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-          {activeDM ? (
+          {currentRoom ? (
+            <RoomView
+              currentRoom={currentRoom}
+              connected={connected}
+              onlineUsers={onlineUsers}
+              currentUsername={username}
+              messages={roomMessages}
+              typingUser={roomTyping}
+              rooms={rooms}
+              onOpenDM={handleOpenDM}
+              onReact={handleReact}
+              onSeen={markRoomSeen}
+              replyTo={roomReplyTo}
+              setReplyTo={setRoomReplyTo}
+              forwardData={forwardData}
+              setForwardData={setForwardData}
+              sendForward={sendForward}
+              onSend={handleSend}
+              onTyping={emitRoomTyping}
+              onForward={handleForward}
+            />
+          ) : activeDM ? (
             <DMPanel
               currentUsername={username}
               withUser={activeDM}
               messages={dmMessages}
               dmTyping={dmTyping}
               isOnline={onlineUsers.includes(activeDM)}
-              onSend={(text, file, audio) => {
-                const reply = dmReplyTo;
-                if (!text.trim() && !file && !audio) return;
-                const normalizedAudio = audio
-                  ? {
-                      ...audio,
-                      audioDuration:
-                        typeof audio.audioDuration === "string"
-                          ? Number(audio.audioDuration)
-                          : audio.audioDuration,
-                    }
-                  : undefined;
-                sendDM(text ?? "", file, normalizedAudio, reply ?? undefined);
-                setDMReplyTo(null);
-              }}
+              onSend={handleSend}
               onTyping={emitDMTyping}
               onClose={closeDM}
-              onReact={(messageId, emoji) =>
-                socket?.emit("add_dm_reaction", {
-                  messageId,
-                  emoji,
-                  username,
-                  to: activeDM,
-                })
-              }
+              onReact={handleReact}
               onVoiceCall={() => startCall(activeDM, "voice")}
               onVideoCall={() => startCall(activeDM, "video")}
               onSeen={(ids) => markDMSeen(ids)}

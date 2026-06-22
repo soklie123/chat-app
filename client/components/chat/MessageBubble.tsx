@@ -47,7 +47,10 @@ export function HoverPanel({
     <>
     
       <div
-        className={`flex flex-col gap-1.5 ${align === "right" ? "items-end animate-[slide-in_0.15s_ease-out]" : "items-start animate-[slide-in_0.15s_ease-out]"} mb-2 z-20 relative select-none`}
+        className={`flex flex-col gap-1.5 ${
+                  align === "right" ? "items-end" : "items-start"
+                } mb-2 z-20 relative select-none animate-softFade`}
+
         data-hover-panel
       >
         {/* Emoji Quick Reaction Panel Bar */}
@@ -205,41 +208,57 @@ export function MessageBubble({
   const longPress  = useLongPress(() => setHoveredId(id));
   const leaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isHovered  = hoveredId === id;
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   return (
-    <div
-      className={`flex flex-col ${fromSelf ? "items-end" : "items-start"} w-full relative group`}
-      onMouseEnter={() => {
-        if (leaveTimer.current) clearTimeout(leaveTimer.current);
-        setHoveredId(id);
-      }}
-      onMouseLeave={() => {
-        leaveTimer.current = setTimeout(() => {
-          setHoveredId((cur) => (cur === id ? null : cur));
-        }, 300);
-      }}
-      {...longPress}
-    >
-      {/* Absolute floating action display layer */}
-      {isHovered && (
-        <HoverPanel
-          msgId={msgId}
-          msgUsername={msgUsername}
-          msgText={msgText}
-          onReact={onReact}
-          onReply={onReply}
-          onForward={onForward}
-          align={fromSelf ? "right" : "left"}
-          allUsers={allUsers}
-          onlineUsers={onlineUsers}
-          rooms={rooms}
-          currentUsername={currentUsername}
-        />
-      )}
+    <div className={`flex flex-col ${fromSelf ? "items-end" : "items-start"} w-full`}>
       
-      {/* Message Text Bubble Markup Child Element Render Node */}
-      <div className="transition-transform duration-150 active:scale-[0.99] origin-left">
-        {children}
+      <div
+        className="relative group w-fit"
+
+        onMouseEnter={() => {
+          if (leaveTimer.current) clearTimeout(leaveTimer.current);
+
+            hoverTimer.current = setTimeout(() => {
+              setHoveredId(id);
+          }, 150); // delay
+        }}
+        onMouseLeave={() => {  
+          if (hoverTimer.current) clearTimeout(hoverTimer.current);
+
+            leaveTimer.current = setTimeout(() => {
+              setHoveredId((cur) => (cur === id ? null : cur));
+          }, 200);
+        }}
+        {...longPress}
+      >
+        {/* Absolute floating action display layer */}
+        {isHovered && (
+          <div
+              className={`absolute top-0 ${
+                fromSelf ? "right-full mr-2" : "left-full ml-2"
+              }`}
+            >
+            <HoverPanel
+              msgId={msgId}
+              msgUsername={msgUsername}
+              msgText={msgText}
+              onReact={onReact}
+              onReply={onReply}
+              onForward={onForward}
+              align={fromSelf ? "right" : "left"}
+              allUsers={allUsers}
+              onlineUsers={onlineUsers}
+              rooms={rooms}
+              currentUsername={currentUsername}
+            />
+          </div>
+        )}
+        
+        {/* Message Text Bubble Markup Child Element Render Node */}
+        <div className="transition-transform duration-150 active:scale-[0.99] origin-left">
+          {children}
+        </div>
       </div>
     </div>
   );

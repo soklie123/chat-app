@@ -51,6 +51,7 @@ export default function MessageList({
   onSeen,
   onReply,
   onForward,
+  allUsers,
   onlineUsers,
   rooms,
 }: {
@@ -62,6 +63,7 @@ export default function MessageList({
   onSeen?: (messageIds: string[]) => void;
   onReply: (msg: { _id: string; username: string; text: string }) => void;
   onForward: (text: string, fromUsername: string, to: string, isRoom: boolean) => void;
+  allUsers: string[];
   onlineUsers: string[];
   rooms: { id: string; name: string }[];
 
@@ -169,6 +171,7 @@ export default function MessageList({
                     onForward={(text, fromUsername) =>
                       onForward(text, fromUsername, currentRoom, true)
                     }
+                    allUsers={allUsers}
                     onlineUsers={onlineUsers}
                     rooms={rooms}
                     currentUsername={currentUsername}
@@ -223,6 +226,7 @@ export default function MessageList({
                     onReact={onReact}
                     onReply={onReply}
                     onForward={onForward}
+                    allUsers={allUsers}
                     onlineUsers={onlineUsers}
                     rooms={rooms}
                     currentUsername={currentUsername}

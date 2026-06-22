@@ -71,6 +71,16 @@
   from { transform: translateX(120%); opacity: 0; }
   to   { transform: translateX(0); opacity: 1; }
 }
+@keyframes softFade {
+  0% {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
 
 .animate-breathe   { animation: breathe 2.4s ease-in-out infinite; }
 .animate-wave       { animation: wave 1.2s ease-in-out infinite; }
@@ -110,4 +120,7 @@ html, body, #__next {
 .custom-scrollbar::-webkit-scrollbar-thumb {
   background-color: #232B33;
   border-radius: 999px;
+}
+.animate-softFade {
+  animation: softFade 0.18s ease-out;
 }

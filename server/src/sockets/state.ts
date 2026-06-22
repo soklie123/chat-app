@@ -3,7 +3,7 @@ import { Room } from "../models/Room";
 
 // In-memory (session only — DB is source of truth)
 export const onlineUsers = new Map<string, string>(); // socketId → username
-export const rooms = new Map<string, Set<string>>(); // roomId → Set<username>
+export const rooms = new Map<string, Set<string>>();  // roomId → Set<username>
 
 export const DEFAULT_ROOMS = ["general"];
 
@@ -21,12 +21,32 @@ export async function seedRooms() {
 
 export async function broadcastRoomList(io: Server) {
   const dbRooms = await Room.find().sort({ createdAt: 1 });
-  const roomList = dbRooms.map((r) => ({
-    id: r.name,
-    name: r.name,
-    memberCount: rooms.get(r.name)?.size ?? 0,
-  }));
-  io.emit("room_list", roomList);
+
+  // Send each connected socket only the rooms they are a member of
+  for (const [socketId, username] of onlineUsers.entries()) {
+    const userRooms = dbRooms.filter((r) =>
+      (r.members ?? []).includes(username)
+    );
+
+    const roomList = userRooms.map((r) => {
+      const liveMembers = rooms.get(r.name);
+      // Prefer in-memory set (kept current by join/invite/leave),
+      // fall back to persisted Room.members for offline-invited users.
+      const members =
+        liveMembers && liveMembers.size > 0
+          ? Array.from(liveMembers)
+          : (r.members ?? []);
+
+      return {
+        id: r.name,
+        name: r.name,
+        memberCount: members.length,
+        members,
+      };
+    });
+
+    io.to(socketId).emit("room_list", roomList);
+  }
 }
 
 // Find a connected socket id by username

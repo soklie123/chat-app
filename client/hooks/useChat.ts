@@ -18,13 +18,20 @@ export const getAvatarColor = (name: string): string => {
   return colors[Math.abs(hash) % colors.length];
 };
 
+export type RoomSummary = {
+  id: string;
+  name: string;
+  memberCount: number;
+  members: string[];
+};
+
 export function useChat(username: string) {
   const socketRef = useRef<Socket | null>(null);
   const [socket, setSocket] = useState<Socket | null>(null);
   const [connected, setConnected] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
   const [allUsers, setAllUsers] = useState<string[]>([]);
-  const [rooms, setRooms] = useState<{ id: string; name: string; memberCount: number }[]>([]);
+  const [rooms, setRooms] = useState<RoomSummary[]>([]);
 
   useEffect(() => {
     if (!username) return;
@@ -44,7 +51,7 @@ export function useChat(username: string) {
     sock.on("disconnect", () => setConnected(false));
     sock.on("online_users", (users: string[]) => setOnlineUsers(users));
     sock.on("all_users", (users: string[]) => setAllUsers(users));
-    sock.on("room_list", (roomList) => setRooms(roomList));
+    sock.on("room_list", (roomList: RoomSummary[]) => setRooms(roomList));
 
     return () => {
       sock.emit("unregister_user");

@@ -2,20 +2,31 @@ export default function ReplyPreview({
   replyTo,
   fromSelf,
 }: {
-  replyTo:  { _id: string; username: string; text: string };
+  replyTo: { _id: string; username: string; text: string };
   fromSelf: boolean;
 }) {
   return (
-    <div className={`flex items-start gap-1.5 mb-1.5 px-2 py-1.5 rounded-lg text-[11px] ${
-      fromSelf
-        ? "bg-[#b7e4a0]/50 border-l-2 border-[#4ade80]"
-        : "bg-gray-100 border-l-2 border-[#0088cc]"
-    }`}>
+    <div
+      className={`flex items-center gap-2 mb-1.5 px-2.5 py-1.5 rounded-md text-[11.5px] ${
+        fromSelf
+          ? "bg-[#2b5278]/40 border-l-2 border-[#5288c1]"
+          : "bg-[#202b36] border-l-2 border-[#5288c1]"
+      }`}
+    >
+      <svg
+        width="12" height="12" viewBox="0 0 24 24" fill="none"
+        stroke="#5288c1" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"
+        className="shrink-0 opacity-80"
+      >
+        <polyline points="9 17 4 12 9 7" />
+        <path d="M4 12h11a5 5 0 0 1 5 5v1" />
+      </svg>
+
       <div className="min-w-0">
-        <span className={`font-semibold ${fromSelf ? "text-[#2d6a1f]" : "text-[#0088cc]"}`}>
-          @{replyTo.username}
+        <span className="font-semibold text-[#5288c1]">
+          {replyTo.username}
         </span>
-        <p className="text-slate-500 truncate mt-0.5">
+        <p className="text-[#8b98a5] truncate mt-0.5 leading-tight">
           {replyTo.text || "📎 File"}
         </p>
       </div>

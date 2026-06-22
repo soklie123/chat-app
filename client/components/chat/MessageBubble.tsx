@@ -2,6 +2,7 @@
 import { useRef, useState } from "react";
 import { useLongPress } from "../../hooks/useLongPress";
 import ForwardPicker from "../shared/ForwardPicker";
+import { all } from "axios";
 
 const EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "😡"];
 
@@ -14,6 +15,7 @@ export function HoverPanel({
   onReply,
   onForward,
   align,
+  allUsers,
   onlineUsers,
   rooms,
   currentUsername,
@@ -25,6 +27,7 @@ export function HoverPanel({
   onReply:        (msg: { _id: string; username: string; text: string }) => void;
   onForward:      (text: string, fromUsername: string, to: string, isRoom: boolean) => void;
   align:          "left" | "right";
+  allUsers: string[];
   onlineUsers:    string[];
   rooms:          { id: string; name: string }[];
   currentUsername: string;
@@ -148,6 +151,7 @@ export function HoverPanel({
       {showPicker && (
         <ForwardPicker
           text={msgText}
+          allUsers={allUsers}
           fromUsername={msgUsername}
           onlineUsers={onlineUsers}
           rooms={rooms}
@@ -176,6 +180,7 @@ export function MessageBubble({
   onReact,
   onReply,
   onForward,
+  allUsers,
   onlineUsers,
   rooms,
   currentUsername,
@@ -191,6 +196,7 @@ export function MessageBubble({
   onReact:      (messageId: string, emoji: string) => void;
   onReply:      (msg: { _id: string; username: string; text: string }) => void;
   onForward:    (text: string, fromUsername: string, to: string, isRoom: boolean) => void;
+  allUsers: string[];
   onlineUsers:    string[];
   rooms:          { id: string; name: string }[];
   currentUsername: string;
@@ -223,6 +229,7 @@ export function MessageBubble({
           onReply={onReply}
           onForward={onForward}
           align={fromSelf ? "right" : "left"}
+          allUsers={allUsers}
           onlineUsers={onlineUsers}
           rooms={rooms}
           currentUsername={currentUsername}

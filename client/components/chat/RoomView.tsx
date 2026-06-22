@@ -6,11 +6,14 @@ import RoomHeader from "./RoomHeader";
 
 type ReplyDraft = { _id: string; username: string; text: string } | null;
 type ForwardDraft = { text: string; fromUsername: string } | null;
-type RoomSummary = { id: string; name: string; memberCount: number; members: string[] };
+type RoomSummary = {
+  id: string;
+  name: string;
+  memberCount: number;
+  members: string[];
+  createdBy: string;
+};
 
-// Mirrors the exact shape useChat's sendMessage expects — there is no
-// exported FileData/AudioData type in chat.ts, so these are defined
-// inline here rather than invented.
 type SendFile = {
   fileUrl: string;
   fileName: string;
@@ -41,8 +44,10 @@ export default function RoomView({
   onSend,
   onTyping,
   onForward,
+  onLeaveGroup,
+  onDeleteGroup,
+  onDeleteChat,
 }: {
-  /** Room id/slug (e.g. "friend") — used to look up its member list. */
   currentRoom: string;
   connected: boolean;
   onlineUsers: string[];
@@ -58,13 +63,12 @@ export default function RoomView({
   forwardData: ForwardDraft;
   setForwardData: (data: ForwardDraft) => void;
   sendForward: (caption: string) => void;
-  // text is always a string from useChat.sendMessage's perspective —
-  // callers pass `text ?? ""` before this point.
   onSend: (text: string, file?: SendFile, audio?: SendAudio) => void;
-  // emitTyping takes the *current input value*, not a room id — passing
-  // "" tells the server to stop_typing, anything else tells it to type.
   onTyping: (value: string) => void;
   onForward: (text: string, fromUsername: string, to: string, isRoom: boolean) => void;
+  onLeaveGroup: (roomId: string) => void;
+  onDeleteGroup: (roomId: string) => void;
+  onDeleteChat: (roomId: string) => void;
 }) {
   const room = rooms.find((r) => r.id === currentRoom);
   const members = room?.members ?? [];
@@ -77,7 +81,11 @@ export default function RoomView({
         connected={connected}
         onlineUsers={onlineUsers}
         currentUsername={currentUsername}
+        createdBy={room?.createdBy}
         onOpenDM={onOpenDM}
+        onLeaveGroup={() => onLeaveGroup(currentRoom)}
+        onDeleteGroup={() => onDeleteGroup(currentRoom)}
+        onDeleteChat={() => onDeleteChat(currentRoom)}
       />
 
       {messages.length === 0 ? (
@@ -90,7 +98,9 @@ export default function RoomView({
               No messages yet
             </div>
             <div className="text-[#4a5568] text-[13px] max-w-[260px] leading-relaxed">
-              Send the first message in <span className="text-[#5288c1]">#{room?.name ?? currentRoom}</span> to get the conversation started
+              Send the first message in{" "}
+              <span className="text-[#5288c1]">#{room?.name ?? currentRoom}</span>{" "}
+              to get the conversation started
             </div>
           </div>
         </div>

@@ -28,6 +28,7 @@ type SendAudio = {
 export default function RoomView({
   currentRoom,
   connected,
+  allUsers,
   onlineUsers,
   currentUsername,
   messages,
@@ -50,6 +51,7 @@ export default function RoomView({
 }: {
   currentRoom: string;
   connected: boolean;
+  allUsers: string[];
   onlineUsers: string[];
   currentUsername: string;
   messages: ChatMessage[];
@@ -114,6 +116,7 @@ export default function RoomView({
           onSeen={onSeen}
           onReply={(msg) => setReplyTo(msg)}
           onForward={onForward}
+          allUsers={allUsers}
           onlineUsers={onlineUsers}
           rooms={rooms}
         />

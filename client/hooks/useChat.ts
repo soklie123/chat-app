@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
+import { getToken } from "../lib/api";
 
 const SOCKET_URL = "http://localhost:4000";
 
 export const getAvatarColor = (name: string): string => {
   const colors = [
-    "#f44336", "#e91e63", "#9c27b0",
+    "#f44736", "#e91e63", "#9c27b0",
     "#3f51b5", "#03a9f4", "#009688", "#ff9800",
   ];
   if (!name) return colors[0];
@@ -33,20 +34,37 @@ export function useChat(username: string) {
   const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
   const [allUsers, setAllUsers] = useState<string[]>([]);
   const [rooms, setRooms] = useState<RoomSummary[]>([]);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!username) return;
 
+    const token = getToken();
+
+    if (!token) {
+      const id = setTimeout(() => {
+        setAuthError("No session found. Please log in again.");
+      }, 0);
+      return () => clearTimeout(id);
+    }
+
     const sock = io(SOCKET_URL, {
       timeout: 5000,
       reconnectionAttempts: 3,
+      auth: { token },
     });
     socketRef.current = sock;
 
     sock.on("connect", () => {
       setConnected(true);
       setSocket(sock);
-      sock.emit("register_user", username);
+      setAuthError(null);
+      sock.emit("register_user"); // ← just emit, no username needed (server reads from JWT)
+    });
+
+    sock.on("connect_error", (err) => {
+      setConnected(false);
+      setAuthError(err.message || "Connection failed.");
     });
 
     sock.on("disconnect", () => setConnected(false));
@@ -86,5 +104,6 @@ export function useChat(username: string) {
     rooms,
     createRoom,
     logout,
+    authError,
   };
 }

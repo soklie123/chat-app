@@ -6,11 +6,12 @@ import { useChat } from "../hooks/useChat";
 import { useNotifications } from "../hooks/useNotifications";
 import { useUnseenNotifications } from "../hooks/useUnseenNotifications";
 import NotificationBanner, { useToasts } from "../components/shared/NotificationBanner";
-import UsernameGate from "../components/shared/UsernameGate";
+import AuthGate from "../components/auth/AuthGate";
 import Sidebar from "../components/layout/Sidebar";
 import DMPanel from "../components/dm/DMPanel";
 import RoomView from "../components/chat/RoomView";
 import CallScreen from "../components/call/CallScreen";
+import { AuthUser } from "../lib/api"; // ✅ import AuthUser type
 import { RoomSummary } from "../hooks/useChat";
 
 type ReplyDraft = { _id: string; username: string; text: string } | null;
@@ -28,6 +29,11 @@ type AudioDraft = {
 
 export default function Home() {
   const [username, setUsername] = useState("");
+
+  // ✅ Handle the new onAuthed callback shape
+  const handleAuthed = (user: AuthUser, _token: string) => {
+    setUsername(user.username);
+  };
 
   const {
     socket, connected, onlineUsers, allUsers, rooms, createRoom, logout,
@@ -48,9 +54,9 @@ export default function Home() {
     emitTyping: emitRoomTyping,
     markRoomSeen,
     reactToRoomMessage,
-    leaveGroup,      // ← destructure here
-    deleteGroup,     // ← destructure here
-    deleteRoomChat,  // ← destructure here
+    leaveGroup,
+    deleteGroup,
+    deleteRoomChat,
   } = useRoom(socket, username);
 
   const activeDMRef = useRef<string | null>(null);
@@ -130,11 +136,6 @@ export default function Home() {
     addToast,
   });
 
-  const roomsForRoomView = rooms.map((room) => ({
-    ...room,
-    createdBy: "",
-  }));
-
   const handleCreateGroup = (name: string, members: string[]) => {
     const roomId = name.trim().toLowerCase().replace(/\s+/g, "-");
 
@@ -190,7 +191,8 @@ export default function Home() {
     });
   };
 
-  if (!username) return <UsernameGate onJoin={setUsername} />;
+  // ✅ Use onAuthed instead of onJoin
+  if (!username) return <AuthGate onAuthed={handleAuthed} />;
 
   return (
     <>
@@ -255,9 +257,9 @@ export default function Home() {
               onSend={handleSend}
               onTyping={emitRoomTyping}
               onForward={handleForward}
-              onLeaveGroup={leaveGroup}     
-              onDeleteGroup={deleteGroup}  
-              onDeleteChat={deleteRoomChat} 
+              onLeaveGroup={leaveGroup}
+              onDeleteGroup={deleteGroup}
+              onDeleteChat={deleteRoomChat}
             />
           ) : activeDM ? (
             <DMPanel

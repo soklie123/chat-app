@@ -324,7 +324,7 @@ export default function Sidebar({
         {/* Groups */}
         {filteredRooms.length > 0 && (
           <>
-            {sectionLabel("Groups")}
+           
             {filteredRooms.map(renderRoomRow)}
           </>
         )}
@@ -332,7 +332,7 @@ export default function Sidebar({
         {/* Existing conversations (DMs) */}
         {filteredConversations.length > 0 && (
           <>
-            {sectionLabel("Recent")}
+          
             <DMList
               conversations={filteredConversations}
               activeDM={activeDM}
@@ -344,14 +344,13 @@ export default function Sidebar({
 
         {filteredOnline.length > 0 && (
           <>
-            {sectionLabel("Online")}
             {filteredOnline.map(u => renderUserRow(u, true))}
           </>
         )}
 
         {filteredOffline.length > 0 && (
           <>
-            {sectionLabel("Offline")}
+        
             {filteredOffline.map(u => renderUserRow(u, false))}
           </>
         )}

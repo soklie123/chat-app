@@ -3,6 +3,8 @@ import { DMConversation } from "../../types/chat";
 import DMList from "../dm/DMList";
 import { getAvatarColor } from "../../hooks/useChat";
 
+type RoomSummary = { id: string; name: string; memberCount: number; members: string[] };
+
 export default function Sidebar({
   username,
   onLogout,
@@ -10,7 +12,10 @@ export default function Sidebar({
   allUsers,
   conversations,
   activeDM,
+  rooms,
+  currentRoom,
   onOpenDM,
+  onOpenRoom,
   onCreateGroup,
 }: {
   username: string;
@@ -19,7 +24,10 @@ export default function Sidebar({
   allUsers: string[];
   conversations: DMConversation[];
   activeDM: string | null;
+  rooms: RoomSummary[];
+  currentRoom: string | null;
   onOpenDM: (username: string) => void;
+  onOpenRoom: (roomId: string) => void;
   onCreateGroup: (name: string, members: string[]) => void;
 }) {
   const [creatingGroup, setCreatingGroup] = useState(false);
@@ -67,6 +75,42 @@ export default function Sidebar({
   const filteredOffline = offlineOthers.filter(u =>
     u.toLowerCase().includes(searchQuery.toLowerCase())
   );
+  const filteredRooms = rooms.filter(r =>
+    r.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const renderRoomRow = (room: RoomSummary) => {
+    const isActive = currentRoom === room.id;
+    return (
+      <button
+        key={room.id}
+        onClick={() => onOpenRoom(room.id)}
+        className={`w-full flex items-center gap-3 px-2.5 py-2 border-none rounded-xl cursor-pointer mb-px text-left transition-colors duration-150 ${
+          isActive ? "bg-[#2b5278]" : "bg-transparent hover:bg-[#202b36]"
+        }`}
+      >
+        {/* Room avatar — hash icon on blue circle */}
+        <div className="w-[46px] h-[46px] rounded-full bg-[#5288c1] flex items-center justify-center shrink-0">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+            stroke="#fff" strokeWidth="2.2" strokeLinecap="round">
+            <line x1="4" y1="9" x2="20" y2="9" />
+            <line x1="4" y1="15" x2="20" y2="15" />
+            <line x1="10" y1="3" x2="8" y2="21" />
+            <line x1="16" y1="3" x2="14" y2="21" />
+          </svg>
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <div className="text-[14.5px] font-semibold text-[#e8ecf0] truncate">
+            {room.name}
+          </div>
+          <div className="text-[12px] text-[#6c7883] mt-px">
+            {room.memberCount ?? room.members?.length ?? 0} members
+          </div>
+        </div>
+      </button>
+    );
+  };
 
   const renderUserRow = (user: string, isOnline: boolean) => (
     <button
@@ -84,9 +128,7 @@ export default function Sidebar({
         >
           {user[0]?.toUpperCase()}
         </div>
-        <span
-          className={`absolute bottom-0 right-0 w-[11px] h-[11px] rounded-full border-2 border-[#17212b] ${isOnline ? "bg-[#4ade80]" : "bg-[#6c7883]"}`}
-        />
+        <span className={`absolute bottom-0 right-0 w-[11px] h-[11px] rounded-full border-2 border-[#17212b] ${isOnline ? "bg-[#4ade80]" : "bg-[#6c7883]"}`} />
       </div>
       <div className="min-w-0">
         <div className={`text-[14.5px] font-semibold truncate ${isOnline ? "text-[#e8ecf0]" : "text-[#8b98a5]"}`}>
@@ -106,7 +148,10 @@ export default function Sidebar({
   );
 
   return (
-    <div className="w-[320px] h-full bg-[#17212b] flex flex-col shrink-0 border-r border-[#0d1821] text-white relative" style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif", WebkitFontSmoothing: "antialiased" }}>
+    <div
+      className="w-[320px] h-full bg-[#17212b] flex flex-col shrink-0 border-r border-[#0d1821] text-white relative"
+      style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif", WebkitFontSmoothing: "antialiased" }}
+    >
 
       {/* ── Header ── */}
       <div className="px-3 py-2.5 flex items-center gap-2 bg-[#17212b] border-b border-[#0d1821] shrink-0">
@@ -236,9 +281,7 @@ export default function Sidebar({
                         >
                           {user[0]?.toUpperCase()}
                         </div>
-                        <span
-                          className={`absolute bottom-0 right-0 w-[9px] h-[9px] rounded-full border-2 border-[#17212b] ${isOnline ? "bg-[#4ade80]" : "bg-[#6c7883]"}`}
-                        />
+                        <span className={`absolute bottom-0 right-0 w-[9px] h-[9px] rounded-full border-2 border-[#17212b] ${isOnline ? "bg-[#4ade80]" : "bg-[#6c7883]"}`} />
                       </div>
                       <span className="text-[13.5px] text-[#e8ecf0] font-medium">{user}</span>
                     </div>
@@ -275,9 +318,18 @@ export default function Sidebar({
         </div>
       )}
 
-      {/* ── Conversation + User List ── */}
-      <div className="flex-1 overflow-y-auto px-1.5 py-1">
+      {/* ── Conversation + Room + User List ── */}
+      <div className="flex-1 overflow-y-auto custom-scrollbar px-1.5 py-1">
 
+        {/* Groups */}
+        {filteredRooms.length > 0 && (
+          <>
+            {sectionLabel("Groups")}
+            {filteredRooms.map(renderRoomRow)}
+          </>
+        )}
+
+        {/* Existing conversations (DMs) */}
         {filteredConversations.length > 0 && (
           <>
             {sectionLabel("Recent")}
@@ -304,7 +356,8 @@ export default function Sidebar({
           </>
         )}
 
-        {filteredConversations.length === 0 &&
+        {filteredRooms.length === 0 &&
+          filteredConversations.length === 0 &&
           filteredOnline.length === 0 &&
           filteredOffline.length === 0 && (
           <div className="px-4 py-12 text-center text-[#4a5568] text-[13px]">

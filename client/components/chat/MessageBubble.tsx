@@ -45,6 +45,7 @@ export function HoverPanel({
 
   return (
     <>
+    
       <div
         className={`flex flex-col gap-1.5 ${align === "right" ? "items-end animate-[slide-in_0.15s_ease-out]" : "items-start animate-[slide-in_0.15s_ease-out]"} mb-2 z-20 relative select-none`}
         data-hover-panel

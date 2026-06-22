@@ -11,6 +11,7 @@ import Sidebar from "../components/layout/Sidebar";
 import DMPanel from "../components/dm/DMPanel";
 import RoomView from "../components/chat/RoomView";
 import CallScreen from "../components/call/CallScreen";
+import { RoomSummary } from "../hooks/useChat";
 
 type ReplyDraft = { _id: string; username: string; text: string } | null;
 type ForwardDraft = { text: string; fromUsername: string } | null;
@@ -47,6 +48,9 @@ export default function Home() {
     emitTyping: emitRoomTyping,
     markRoomSeen,
     reactToRoomMessage,
+    leaveGroup,      // ← destructure here
+    deleteGroup,     // ← destructure here
+    deleteRoomChat,  // ← destructure here
   } = useRoom(socket, username);
 
   const activeDMRef = useRef<string | null>(null);
@@ -70,13 +74,11 @@ export default function Home() {
   const [roomReplyTo, setRoomReplyTo] = useState<ReplyDraft>(null);
   const [forwardData, setForwardData] = useState<ForwardDraft>(null);
 
-  // Opens a DM and makes sure a room isn't shown at the same time.
   const handleOpenDM = (otherUsername: string) => {
     closeRoom();
     openDM(otherUsername);
   };
 
-  // Opens a room and makes sure a DM isn't shown at the same time.
   const handleOpenRoom = (roomId: string) => {
     closeDM();
     openRoom(roomId);
@@ -128,18 +130,11 @@ export default function Home() {
     addToast,
   });
 
-  /**
-   * Creates the room, then immediately joins it for the creator before
-   * inviting members.
-   *
-   * The backend's create_room handler only creates the Room document and
-   * adds the creator's username to the in-memory member Set — it never
-   * calls socket.join(roomId) for the creator's own socket. Without
-   * explicitly joining here, the creator would be tracked as a "member"
-   * but not actually be in the socket.io room, so receive_message
-   * broadcasts would never reach them. Listening for "room_created" once
-   * and joining right after avoids racing ahead of the server.
-   */
+  const roomsForRoomView = rooms.map((room) => ({
+    ...room,
+    createdBy: "",
+  }));
+
   const handleCreateGroup = (name: string, members: string[]) => {
     const roomId = name.trim().toLowerCase().replace(/\s+/g, "-");
 
@@ -149,7 +144,6 @@ export default function Home() {
         socket.off("room_created", onCreated);
         handleOpenRoom(createdRoomId);
         if (members.length > 0) {
-          // slight delay so join_room resolves server-side first
           setTimeout(() => {
             socket.emit("invite_to_group", { room: createdRoomId, users: members });
           }, 300);
@@ -224,7 +218,6 @@ export default function Home() {
         onJoinRoom={handleOpenRoom}
       />
 
-      {/* ── Root layout — the scroll chain starts here ── */}
       <div className="h-screen flex overflow-hidden bg-[#0e1621]" style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" }}>
 
         <Sidebar
@@ -262,6 +255,9 @@ export default function Home() {
               onSend={handleSend}
               onTyping={emitRoomTyping}
               onForward={handleForward}
+              onLeaveGroup={leaveGroup}     
+              onDeleteGroup={deleteGroup}  
+              onDeleteChat={deleteRoomChat} 
             />
           ) : activeDM ? (
             <DMPanel
@@ -288,7 +284,6 @@ export default function Home() {
               onForwardSend={(_text, _from, caption) => sendForward(caption)}
             />
           ) : (
-            /* ── Empty state ── */
             <div className="flex-1 flex flex-col items-center justify-center bg-[#0e1621] gap-4 select-none">
               <div className="w-[88px] h-[88px] rounded-full bg-[#17212b] flex items-center justify-center">
                 <svg width="40" height="40" viewBox="0 0 24 24" fill="none"

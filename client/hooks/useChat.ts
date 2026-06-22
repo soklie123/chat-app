@@ -23,6 +23,7 @@ export type RoomSummary = {
   name: string;
   memberCount: number;
   members: string[];
+  createdBy: string;
 };
 
 export function useChat(username: string) {

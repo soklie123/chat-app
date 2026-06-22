@@ -42,8 +42,10 @@ export type DMMessage = {
   time: string;
   username: string;
   reactions?: { emoji: string; count: number; usernames: string[] }[];
+  isSystem?: boolean;  
   fileUrl?: string;
   fileName?: string;
+
   fileType?: string;
   isImage?: boolean;
   audioUrl?: string;

@@ -2,27 +2,50 @@ import { Server, Socket } from "socket.io";
 import { Message } from "../models/Message";
 import { Room } from "../models/Room";
 import { User } from "../models/User";
-import { onlineUsers, rooms, broadcastRoomList, getSocketId } from "./state";
+import { onlineUsers, rooms, broadcastRoomList, getSocketId, SYSTEM_ROOMS } from "./state";
+
+// ── Helper: save + broadcast a system message ──────────
+async function sendSystemMessage(io: Server, roomId: string, text: string) {
+  const msg = await Message.create({
+    room: roomId,
+    username: "system",
+    text,
+    time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+  });
+
+  io.to(roomId).emit("receive_message", {
+    _id: msg._id,
+    roomId,
+    username: "system",
+    text,
+    time: msg.time,
+    reactions: [],
+  });
+}
 
 export function registerRoomHandlers(io: Server, socket: Socket) {
 
   // ── Register ───────────────────────────────────────────
   socket.on("register_user", async (username: string) => {
     if (!username) return;
-
     onlineUsers.set(socket.id, username);
-
     await User.findOneAndUpdate(
       { username },
       { username, lastSeen: new Date() },
       { upsert: true, returnDocument: "after" }
     );
 
-    io.emit("online_users", Array.from(onlineUsers.values()));
+    for (const { name } of SYSTEM_ROOMS) {
+      await Room.findOneAndUpdate(
+        { name },
+        { $addToSet: { members: username } }
+      );
+      if (!rooms.has(name)) rooms.set(name, new Set());
+    }
 
+    io.emit("online_users", Array.from(onlineUsers.values()));
     const allUsers = await User.find({}, "username").lean();
     io.emit("all_users", allUsers.map((u) => u.username));
-
     await broadcastRoomList(io);
   });
 
@@ -34,10 +57,8 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
     }
     onlineUsers.delete(socket.id);
     io.emit("online_users", Array.from(onlineUsers.values()));
-
     const allUsers = await User.find({}, "username").lean();
     io.emit("all_users", allUsers.map((u) => u.username));
-
     await broadcastRoomList(io);
   });
 
@@ -46,14 +67,12 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
     const username = onlineUsers.get(socket.id);
     if (!username || !roomId) return;
 
-    // 🔒 Only members may join — prevents spoofed join_room events
     const roomDoc = await Room.findOne({ name: roomId });
     if (!roomDoc || !(roomDoc.members ?? []).includes(username)) {
       socket.emit("join_room_denied", { roomId, reason: "not_a_member" });
       return;
     }
 
-    // Leave every other room this socket is currently in
     Array.from(socket.rooms).forEach((r) => {
       if (r !== socket.id) {
         socket.leave(r);
@@ -86,31 +105,24 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
 
     const roomId = roomName.toLowerCase().replace(/\s+/g, "-");
     const exists = await Room.findOne({ name: roomId });
-
     if (exists) {
       socket.emit("room_exists", roomId);
       return;
     }
 
-    // Creator is automatically the first (and only) member
     await Room.create({ name: roomId, createdBy: username, members: [username] });
     rooms.set(roomId, new Set([username]));
-
-    // broadcastRoomList is per-user, so only the creator will see this
-    // new room appear in their sidebar until others are invited.
     await broadcastRoomList(io);
-
     socket.emit("room_created", roomId);
   });
 
-  // ── Invite members to group ────────────────────────────
+  // ── Invite members ─────────────────────────────────────
   socket.on("invite_to_group", async ({ room, users }: { room: string; users: string[] }) => {
     const invitedBy = onlineUsers.get(socket.id);
     if (!invitedBy || !room || !users?.length) return;
 
     const roomId = room.toLowerCase().replace(/\s+/g, "-");
 
-    // Verify the inviter is themselves a member of this room
     const roomDoc = await Room.findOne({ name: roomId });
     if (!roomDoc || !(roomDoc.members ?? []).includes(invitedBy)) {
       socket.emit("invite_denied", { roomId, reason: "not_a_member" });
@@ -118,19 +130,13 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
     }
 
     for (const targetUsername of users) {
-      // Persist membership in DB first so broadcastRoomList picks it up
       await Room.findOneAndUpdate(
         { name: roomId },
         { $addToSet: { members: targetUsername } }
       );
-
-      // Mirror in in-memory set
       if (!rooms.has(roomId)) rooms.set(roomId, new Set());
       rooms.get(roomId)!.add(targetUsername);
 
-      // Notify the invited user if they are online so they can react
-      // (e.g. auto-join or show a banner) — their sidebar will also
-      // update automatically via broadcastRoomList below.
       const targetSocketId = getSocketId(targetUsername);
       if (targetSocketId) {
         io.to(targetSocketId).emit("invited_to_group", {
@@ -138,17 +144,83 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
           invitedBy,
         });
       }
+
+      // ── System message: X added Y ──────────────────────
+      await sendSystemMessage(io, roomId, `${invitedBy} added ${targetUsername}`);
     }
 
-    // Tell the inviter the updated member list for their UI
     socket.emit("group_members_updated", {
       groupName: roomId,
       members: Array.from(rooms.get(roomId) ?? []),
     });
-
-    // Re-broadcast per-user room lists — newly invited users will now
-    // see this room appear in their sidebar; everyone else is unaffected.
     await broadcastRoomList(io);
+  });
+
+  // ── Leave group ────────────────────────────────────────
+  socket.on("leave_group", async ({ roomId }: { roomId: string }) => {
+    const username = onlineUsers.get(socket.id);
+    if (!username || !roomId) return;
+
+    await Room.findOneAndUpdate(
+      { name: roomId },
+      { $pull: { members: username } }
+    );
+
+    rooms.get(roomId)?.delete(username);
+
+    // ── System message: X left the group ──────────────── 
+    // Send BEFORE socket.leave so the leaver's socket still receives it
+    await sendSystemMessage(io, roomId, `${username} left the group`);
+
+    socket.leave(roomId);
+
+    const updatedRoom = await Room.findOne({ name: roomId });
+    if (!updatedRoom || updatedRoom.members.length === 0) {
+      await Room.deleteOne({ name: roomId });
+      await Message.deleteMany({ room: roomId });
+      rooms.delete(roomId);
+    }
+
+    socket.emit("left_group", { roomId });
+    io.to(roomId).emit("group_member_left", { roomId, username });
+    await broadcastRoomList(io);
+  });
+
+  // ── Delete group (creator only) ────────────────────────
+  socket.on("delete_group", async ({ roomId }: { roomId: string }) => {
+    const username = onlineUsers.get(socket.id);
+    if (!username || !roomId) return;
+
+    const roomDoc = await Room.findOne({ name: roomId });
+    if (!roomDoc) return;
+
+    if (roomDoc.createdBy !== username) {
+      socket.emit("delete_group_denied", { roomId, reason: "not_creator" });
+      return;
+    }
+
+    await Message.deleteMany({ room: roomId });
+    await Room.deleteOne({ name: roomId });
+    rooms.delete(roomId);
+
+    io.to(roomId).emit("group_deleted", { roomId });
+    await broadcastRoomList(io);
+  });
+
+  // ── Delete room chat history ───────────────────────────
+  socket.on("delete_room_chat", async ({ roomId }: { roomId: string }) => {
+    const username = onlineUsers.get(socket.id);
+    if (!username || !roomId) return;
+
+    const roomDoc = await Room.findOne({ name: roomId });
+    if (!roomDoc || !roomDoc.members.includes(username)) return;
+
+    if (roomDoc.createdBy === username) {
+      await Message.deleteMany({ room: roomId });
+      io.to(roomId).emit("room_chat_cleared", { roomId });
+    } else {
+      socket.emit("room_chat_cleared", { roomId });
+    }
   });
 
   // ── Pagination ─────────────────────────────────────────
@@ -156,7 +228,6 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
     const username = onlineUsers.get(socket.id);
     if (!username) return;
 
-    // 🔒 Only members may load history
     const roomDoc = await Room.findOne({ name: room });
     if (!roomDoc || !(roomDoc.members ?? []).includes(username)) return;
 

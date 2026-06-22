@@ -64,6 +64,8 @@ export default function MessageList({
   onForward: (text: string, fromUsername: string, to: string, isRoom: boolean) => void;
   onlineUsers: string[];
   rooms: { id: string; name: string }[];
+
+  
 }) {
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);

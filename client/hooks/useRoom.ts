@@ -15,12 +15,6 @@ type SendAudio = {
 };
 type ReplyDraft = { _id: string; username: string; text: string } | null;
 
-/**
- * Shape of a message as it actually comes off the wire from the server
- * (room.handlers.ts / message.handlers.ts) — covers chat_history,
- * older_messages, and receive_message payloads, which all share this
- * same field set.
- */
 type RawServerMessage = {
   _id: string;
   tempId?: string;
@@ -41,24 +35,6 @@ type RawServerMessage = {
   fromUsername?: string;
 };
 
-/**
- * Room/group chat state and actions.
- *
- * Mirrors the real backend contract in server/src/sockets/room.handlers.ts
- * and message.handlers.ts:
- *   - join_room      -> chat_history (also forcibly leaves any other room
- *                       you were in, server-side, so only call this when
- *                       the room actually changes)
- *   - send_message   -> receive_message (broadcast to the whole room,
- *                       including the sender)
- *   - typing/stop_typing -> user_typing/user_stop_typing (payload is just
- *                       a username string, not an object)
- *   - load_older_messages -> older_messages
- *   - add_reaction   -> message_reaction_updated, OR message_reaction_update
- *                       (no trailing "d") for the toggle-off case — the
- *                       backend genuinely uses two different event names,
- *                       so this hook listens for both.
- */
 export function useRoom(socket: Socket | null, username: string) {
   const [currentRoom, setCurrentRoom] = useState<string | null>(null);
   const [roomMessages, setRoomMessages] = useState<ChatMessage[]>([]);
@@ -70,33 +46,17 @@ export function useRoom(socket: Socket | null, username: string) {
     currentRoomRef.current = currentRoom;
   }, [currentRoom]);
 
-  // Pending sends keyed by tempId, so we can reconcile the optimistic
-  // message with the server-confirmed one when receive_message echoes back.
   const pendingTempIds = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (!socket) return;
 
-    const onHistory = ({
-      messages,
-      hasMore,
-    }: {
-      messages: RawServerMessage[];
-      hasMore: boolean;
-    }) => {
-      setRoomMessages(
-        messages.map((m) => toChatMessage(m, username))
-      );
+    const onHistory = ({ messages, hasMore }: { messages: RawServerMessage[]; hasMore: boolean }) => {
+      setRoomMessages(messages.map((m) => toChatMessage(m, username)));
       setHasMoreHistory(hasMore);
     };
 
-    const onOlder = ({
-      messages,
-      hasMore,
-    }: {
-      messages: RawServerMessage[];
-      hasMore: boolean;
-    }) => {
+    const onOlder = ({ messages, hasMore }: { messages: RawServerMessage[]; hasMore: boolean }) => {
       setRoomMessages((prev) => [
         ...messages.map((m) => toChatMessage(m, username)),
         ...prev,
@@ -105,18 +65,12 @@ export function useRoom(socket: Socket | null, username: string) {
     };
 
     const onReceive = (payload: RawServerMessage) => {
-      // Only append if it belongs to the room we're currently viewing.
       if (payload.roomId !== currentRoomRef.current) return;
-
       setRoomMessages((prev) => {
-        // Reconcile our own optimistic message via tempId instead of
-        // appending a duplicate.
         if (payload.tempId && pendingTempIds.current.has(payload.tempId)) {
           pendingTempIds.current.delete(payload.tempId);
           return prev.map((m) =>
-            m._id === payload.tempId
-              ? toChatMessage(payload, username)
-              : m
+            m._id === payload.tempId ? toChatMessage(payload, username) : m
           );
         }
         return [...prev, toChatMessage(payload, username)];
@@ -130,13 +84,7 @@ export function useRoom(socket: Socket | null, username: string) {
 
     const onUserStopTyping = () => setTypingUser(null);
 
-    const onReactionUpdated = ({
-      messageId,
-      reactions,
-    }: {
-      messageId: string;
-      reactions: Reaction[];
-    }) => {
+    const onReactionUpdated = ({ messageId, reactions }: { messageId: string; reactions: Reaction[] }) => {
       setRoomMessages((prev) =>
         prev.map((m) => (m._id === messageId ? { ...m, reactions } : m))
       );
@@ -154,16 +102,46 @@ export function useRoom(socket: Socket | null, username: string) {
       );
     };
 
+    // ── Leave / Delete / Clear handlers ───────────────────
+    const onLeftGroup = ({ roomId }: { roomId: string }) => {
+      if (currentRoomRef.current === roomId) {
+        setCurrentRoom(null);
+        setRoomMessages([]);
+        setTypingUser(null);
+      }
+    };
+
+    const onGroupDeleted = ({ roomId }: { roomId: string }) => {
+      if (currentRoomRef.current === roomId) {
+        setCurrentRoom(null);
+        setRoomMessages([]);
+        setTypingUser(null);
+      }
+    };
+
+    const onRoomChatCleared = ({ roomId }: { roomId: string }) => {
+      if (currentRoomRef.current === roomId) {
+        setRoomMessages([]);
+      }
+    };
+
+    const onGroupMemberLeft = (_: { roomId: string; username: string }) => {
+      // member strip updates automatically via room_list broadcast
+    };
+
     socket.on("chat_history", onHistory);
     socket.on("older_messages", onOlder);
     socket.on("receive_message", onReceive);
     socket.on("user_typing", onUserTyping);
     socket.on("user_stop_typing", onUserStopTyping);
-    // Backend emits both event names depending on toggle direction.
     socket.on("message_reaction_updated", onReactionUpdated);
     socket.on("message_reaction_update", onReactionUpdated);
     socket.on("joined_room", onJoined);
     socket.on("messages_seen", onSeen);
+    socket.on("left_group", onLeftGroup);
+    socket.on("group_deleted", onGroupDeleted);
+    socket.on("room_chat_cleared", onRoomChatCleared);
+    socket.on("group_member_left", onGroupMemberLeft);
 
     return () => {
       socket.off("chat_history", onHistory);
@@ -175,10 +153,13 @@ export function useRoom(socket: Socket | null, username: string) {
       socket.off("message_reaction_update", onReactionUpdated);
       socket.off("joined_room", onJoined);
       socket.off("messages_seen", onSeen);
+      socket.off("left_group", onLeftGroup);
+      socket.off("group_deleted", onGroupDeleted);
+      socket.off("room_chat_cleared", onRoomChatCleared);
+      socket.off("group_member_left", onGroupMemberLeft);
     };
   }, [socket, username]);
 
-  /** Switch the active room. No-ops if already in that room. */
   const openRoom = useCallback(
     (roomId: string) => {
       if (!socket || !roomId) return;
@@ -187,8 +168,6 @@ export function useRoom(socket: Socket | null, username: string) {
       setHasMoreHistory(false);
       setTypingUser(null);
       socket.emit("join_room", roomId);
-      // currentRoom is confirmed by the "joined_room" event, not set eagerly,
-      // so the UI doesn't show a room as active before the server agrees.
     },
     [socket]
   );
@@ -200,12 +179,7 @@ export function useRoom(socket: Socket | null, username: string) {
   }, []);
 
   const sendRoomMessage = useCallback(
-    (
-      text: string,
-      file?: SendFile,
-      audio?: SendAudio,
-      replyTo?: ReplyDraft
-    ) => {
+    (text: string, file?: SendFile, audio?: SendAudio, replyTo?: ReplyDraft) => {
       const roomId = currentRoomRef.current;
       if (!socket || !roomId || !username) return;
       if (!text.trim() && !file && !audio) return;
@@ -213,8 +187,6 @@ export function useRoom(socket: Socket | null, username: string) {
       const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
       pendingTempIds.current.add(tempId);
 
-      // Optimistic local echo so the sender sees the message instantly,
-      // matching the pattern implied by tempId reconciliation server-side.
       const optimistic: ChatMessage = {
         _id: tempId,
         text,
@@ -281,6 +253,31 @@ export function useRoom(socket: Socket | null, username: string) {
     [socket, username]
   );
 
+  // ── Leave / Delete / Clear actions ────────────────────
+  const leaveGroup = useCallback(
+    (roomId: string) => {
+      if (!socket || !roomId) return;
+      socket.emit("leave_group", { roomId });
+    },
+    [socket]
+  );
+
+  const deleteGroup = useCallback(
+    (roomId: string) => {
+      if (!socket || !roomId) return;
+      socket.emit("delete_group", { roomId });
+    },
+    [socket]
+  );
+
+  const deleteRoomChat = useCallback(
+    (roomId: string) => {
+      if (!socket || !roomId) return;
+      socket.emit("delete_room_chat", { roomId });
+    },
+    [socket]
+  );
+
   return {
     currentRoom,
     roomMessages,
@@ -293,10 +290,13 @@ export function useRoom(socket: Socket | null, username: string) {
     markRoomSeen,
     loadOlderMessages,
     reactToRoomMessage,
+    leaveGroup,
+    deleteGroup,
+    deleteRoomChat,
+    
   };
 }
 
-/** Normalizes a raw server message into the ChatMessage shape the UI expects. */
 function toChatMessage(m: RawServerMessage, currentUsername: string): ChatMessage {
   return {
     _id: m._id,
@@ -306,6 +306,7 @@ function toChatMessage(m: RawServerMessage, currentUsername: string): ChatMessag
     username: m.username,
     color: getAvatarColor(m.username),
     reactions: m.reactions ?? [],
+
     fileUrl: m.fileUrl,
     fileName: m.fileName,
     fileType: m.fileType,

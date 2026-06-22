@@ -4,19 +4,18 @@ import { env } from "./config/env";
 import { connectDB } from "./db/conn";
 import { createApp } from "./app";
 import { registerSocketHandlers } from "./sockets";
-import { seedRooms } from "./sockets/state";
+
 
 async function bootstrap() {
   await connectDB(env.MONGODB_URI);
 
   const app = createApp();
   const server = http.createServer(app);
-
   const io = new Server(server, {
     cors: { origin: "*" },
   });
 
-  await seedRooms();
+  
   registerSocketHandlers(io);
 
   server.listen(env.PORT, () => {

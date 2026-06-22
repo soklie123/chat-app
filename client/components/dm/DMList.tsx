@@ -14,19 +14,14 @@ export default function DMList({
 }) {
   if (conversations.length === 0) {
     return (
-      <div style={{
-        padding: "32px 16px",
-        textAlign: "center",
-        color: "#4a5568",
-        fontSize: "13px",
-      }}>
+      <div className="px-4 py-8 text-center text-[#4a5568] text-[13px]">
         No conversations yet
       </div>
     );
   }
 
   return (
-    <div style={{ paddingTop: "4px" }}>
+    <div className="pt-1">
       {conversations.map((conv) => {
         const isOnline = !conv.isGroup && onlineUsers.includes(conv.username);
         const isActive = activeDM === conv.username;
@@ -35,63 +30,49 @@ export default function DMList({
           <button
             key={conv.username}
             onClick={() => onOpen(conv.username)}
-            style={{
-              width: "100%",
-              display: "flex",
-              alignItems: "center",
-              gap: "12px",
-              padding: "8px 12px",
-              background: isActive ? "#2b5278" : "transparent",
-              border: "none",
-              borderRadius: "10px",
-              cursor: "pointer",
-              textAlign: "left",
-              transition: "background 0.15s",
-              marginBottom: "1px",
-            }}
-            onMouseEnter={e => {
-              if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = "#202b36";
-            }}
-            onMouseLeave={e => {
-              if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = "transparent";
-            }}
+            className={`
+              w-full flex items-center gap-3 px-3 py-2 rounded-xl
+              border-none cursor-pointer text-left transition-colors duration-150 mb-px
+              ${isActive ? "bg-[#2b5278]" : "bg-transparent hover:bg-[#202b36]"}
+            `}
           >
             {/* Avatar */}
-            <div style={{ position: "relative", flexShrink: 0 }}>
+            <div className="relative shrink-0">
               <Avatar name={conv.username} size={46} />
-              {/* Online dot — only for DMs */}
               {!conv.isGroup && (
-                <span style={{
-                  position: "absolute",
-                  bottom: 1,
-                  right: 1,
-                  width: 11,
-                  height: 11,
-                  borderRadius: "50%",
-                  background: isOnline ? "#4ade80" : "#6c7883",
-                  border: "2px solid #17212b",
-                }} />
+                <span
+                  className={`
+                    absolute bottom-0 right-0 w-[11px] h-[11px] rounded-full
+                    border-2 border-[#17212b]
+                    ${isOnline ? "bg-[#4ade80]" : "bg-[#6c7883]"}
+                  `}
+                />
               )}
             </div>
 
             {/* Text content */}
-            <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="flex-1 min-w-0">
               {/* Top row: name + time */}
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "2px" }}>
-                <div style={{
-                  fontSize: "14.5px",
-                  fontWeight: 600,
-                  color: isActive ? "#fff" : "#e8ecf0",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                  maxWidth: "160px",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "5px",
-                }}>
+              <div className="flex items-center justify-between mb-0.5">
+                <div
+                  className={`
+                    text-[14.5px] font-semibold truncate max-w-[160px]
+                    flex items-center gap-[5px]
+                    ${isActive ? "text-white" : "text-[#e8ecf0]"}
+                  `}
+                >
                   {conv.isGroup && (
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#8b98a5" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                    <svg
+                      width="13"
+                      height="13"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="#8b98a5"
+                      strokeWidth="2.2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="shrink-0"
+                    >
                       <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
                       <circle cx="9" cy="7" r="4" />
                       <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
@@ -100,43 +81,28 @@ export default function DMList({
                   )}
                   {conv.username}
                 </div>
-                <div style={{
-                  fontSize: "11.5px",
-                  color: isActive ? "rgba(255,255,255,0.55)" : "#6c7883",
-                  flexShrink: 0,
-                  marginLeft: "6px",
-                }}>
+                <div
+                  className={`
+                    text-[11.5px] shrink-0 ml-1.5
+                    ${isActive ? "text-white/55" : "text-[#6c7883]"}
+                  `}
+                >
                   {conv.time}
                 </div>
               </div>
 
               {/* Bottom row: last message + unread badge */}
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "6px" }}>
-                <div style={{
-                  fontSize: "13px",
-                  color: isActive ? "rgba(255,255,255,0.65)" : "#8b98a5",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                  flex: 1,
-                }}>
+              <div className="flex items-center justify-between gap-1.5">
+                <div
+                  className={`
+                    text-[13px] truncate flex-1
+                    ${isActive ? "text-white/65" : "text-[#8b98a5]"}
+                  `}
+                >
                   {conv.lastMessage || "…"}
                 </div>
                 {conv.unread > 0 && !isActive && (
-                  <div style={{
-                    minWidth: "20px",
-                    height: "20px",
-                    borderRadius: "10px",
-                    background: "#5288c1",
-                    color: "#fff",
-                    fontSize: "11px",
-                    fontWeight: 700,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    padding: "0 5px",
-                    flexShrink: 0,
-                  }}>
+                  <div className="min-w-[20px] h-5 rounded-full bg-[#5288c1] text-white text-[11px] font-bold flex items-center justify-center px-1 shrink-0">
                     {conv.unread > 99 ? "99+" : conv.unread}
                   </div>
                 )}

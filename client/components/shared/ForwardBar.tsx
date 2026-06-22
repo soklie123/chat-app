@@ -1,5 +1,4 @@
 import { useState } from "react";
-import Avatar from "./shared/Avatar";
 
 export default function ForwardBar({
   text,

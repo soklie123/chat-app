@@ -50,8 +50,14 @@
   50%      { box-shadow: 0 0 0 4px rgba(61,220,151,0); }
 }
 @keyframes wave {
-  0%, 60%, 100% { transform: translateY(0); }
-  30%           { transform: translateY(-3px); }
+  0%, 100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  50% {
+    transform: translateY(-6px);
+    opacity: 1;
+  }
 }
 @keyframes slideUp {
   0%   { opacity: 0; transform: translateY(6px); }

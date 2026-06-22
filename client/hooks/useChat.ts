@@ -50,7 +50,10 @@ export function useChat(username: string) {
 
     sock.on("disconnect", () => setConnected(false));
     sock.on("online_users", (users: string[]) => setOnlineUsers(users));
-    sock.on("all_users", (users: string[]) => setAllUsers(users));
+    
+    sock.on("all_users", (users: string[]) => {
+      setAllUsers(users.filter(u => u !== username));
+    });
     sock.on("room_list", (roomList: RoomSummary[]) => setRooms(roomList));
 
     return () => {

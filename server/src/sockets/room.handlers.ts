@@ -21,7 +21,7 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
     io.emit("online_users", Array.from(onlineUsers.values()));
 
     const allUsers = await User.find({}, "username").lean();
-    io.emit("all_users", allUsers.map((u) => u.username));
+    socket.emit("all_users", allUsers.map((u) => u.username));
 
     await broadcastRoomList(io);
   });
@@ -36,7 +36,7 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
     io.emit("online_users", Array.from(onlineUsers.values()));
 
     const allUsers = await User.find({}, "username").lean();
-    io.emit("all_users", allUsers.map((u) => u.username));
+    socket.emit("all_users", allUsers.map((u) => u.username));
 
     await broadcastRoomList(io);
   });

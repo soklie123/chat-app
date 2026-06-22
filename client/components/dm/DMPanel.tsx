@@ -16,7 +16,7 @@ const UPLOAD_URL = "http://localhost:4000/upload";
 export default function DMPanel({
   currentUsername, withUser, messages, dmTyping, isOnline,
   onSend, onTyping, onClose, onReact, onVideoCall, onVoiceCall,
-  onSeen, onReply, onForward, onlineUsers, rooms, replyTo,
+  onSeen, onReply, onForward, allUsers, onlineUsers, rooms, replyTo,
   onCancelReply, forwardMsg, onCancelForward, onForwardSend,
 }: {
   currentUsername: string;
@@ -33,6 +33,7 @@ export default function DMPanel({
   onSeen?: (messageIds: string[]) => void;
   onReply?: (msg: { _id: string; username: string; text: string }) => void;
   onForward?: (text: string, fromUsername: string, to: string, isRoom: boolean) => void;
+  allUsers?: [];
   onlineUsers?: string[];
   rooms?: { id: string; name: string }[];
   replyTo?: { _id: string; username: string; text: string };
@@ -203,8 +204,11 @@ export default function DMPanel({
                       fromSelf={true} msgId={msg._id} msgUsername={msg.username} msgText={msg.text}
                       onReact={(msgId, emoji) => onReact?.(msgId, emoji)}
                       onReply={(m) => onReply?.(m)}
+                      allUsers={allUsers ?? []}
                       onForward={(text, fromUsername) => onForward?.(text, fromUsername, withUser, false)}
-                      onlineUsers={onlineUsers ?? []} rooms={rooms ?? []} currentUsername={currentUsername}>
+                      onlineUsers={onlineUsers ?? []} 
+                      rooms={rooms ?? []} 
+                      currentUsername={currentUsername}>
                       <div className="bg-[#2b5278] border border-[#244565] rounded-2xl rounded-tr-[4px] px-3.5 py-2 text-[14.5px] text-[#f5f6f7] leading-relaxed shadow-[0_2px_6px_rgba(0,0,0,0.25)] relative">
                         {msg.forwarded && (
                           <div className="text-[11px] text-[#8ab4f8] mb-1.5 flex items-center gap-1.5 border-l-2 border-[#5288c1] pl-2.5">
@@ -248,7 +252,10 @@ export default function DMPanel({
                       onReact={(msgId, emoji) => onReact?.(msgId, emoji)}
                       onReply={(m) => onReply?.(m)}
                       onForward={(text, fromUsername) => onForward?.(text, fromUsername, withUser, false)}
-                      onlineUsers={onlineUsers ?? []} rooms={rooms ?? []} currentUsername={currentUsername}>
+                      allUsers={allUsers ?? []}
+                      onlineUsers={onlineUsers ?? []} 
+                      rooms={rooms ?? []} 
+                      currentUsername={currentUsername}>
                       <div className="bg-[#182533] border border-[#101921] rounded-2xl rounded-tl-[4px] px-3.5 py-2 text-[14.5px] text-[#f5f6f7] leading-relaxed shadow-[0_2px_6px_rgba(0,0,0,0.25)] relative">
                         {msg.forwarded && (
                           <div className="text-[11px] text-[#6c7883] mb-1.5 flex items-center gap-1.5 border-l-2 border-[#475569] pl-2.5">

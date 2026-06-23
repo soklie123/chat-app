@@ -49,25 +49,25 @@ export default function AuthGate({
     setPassword("");
   };
 
- const submit = async () => {
-  if (!isValid || submitting) return;
-  setSubmitting(true);
-  setError(null);
-  try {
-    const res =
-      mode === "login"
-        ? await loginRequest(identifier.trim(), password)
-        : await registerRequest(username.trim(), email.trim(), password);
+  const submit = async () => {
+    if (!isValid || submitting) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const res =
+        mode === "login"
+          ? await loginRequest(identifier.trim(), password)
+          : await registerRequest(username.trim(), email.trim(), password);
 
-    saveToken(res.token);
-    onAuthed(res.user, res.token);
-  } catch (err: unknown) {                                          // ✅ unknown instead of any
-    const message = err instanceof Error ? err.message : "Something went wrong.";
-    setError(message);
-  } finally {
-    setSubmitting(false);
-  }
-};
+      saveToken(res.token);
+      onAuthed(res.user, res.token);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Something went wrong.";
+      setError(message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <div style={{
@@ -76,25 +76,86 @@ export default function AuthGate({
       height: "100vh",
       overflow: "hidden",
       fontFamily: "Arial, Helvetica, sans-serif",
+      background: "#080d16",
     }}>
 
-      {/* ── LEFT panel — unchanged branding ── */}
+      {/* Dynamic Keyframes for the Floating Chat Elements & Emojis */}
+      <style>{`
+        @keyframes floatOne {
+          0% { transform: translate(0px, 0px) scale(1); }
+          50% { transform: translate(30px, -50px) scale(1.15); }
+          100% { transform: translate(0px, 0px) scale(1); }
+        }
+        @keyframes floatTwo {
+          0% { transform: translate(0px, 0px) scale(1); }
+          50% { transform: translate(-40px, 40px) scale(0.9); }
+          100% { transform: translate(0px, 0px) scale(1); }
+        }
+        @keyframes floatEmojiUp {
+          0% {
+            transform: translateY(105vh) translateX(0) rotate(0deg) scale(0.4);
+            opacity: 0;
+          }
+          10% {
+            opacity: 0.35;
+          }
+          50% {
+            transform: translateY(50vh) translateX(25px) rotate(15deg) scale(1);
+            opacity: 0.45;
+          }
+          90% {
+            opacity: 0.35;
+          }
+          100% {
+            transform: translateY(-10vh) translateX(-15px) rotate(-10deg) scale(0.7);
+            opacity: 0;
+          }
+        }
+        @keyframes gentlePulse {
+          0% { transform: scale(1); opacity: 0.9; }
+          50% { transform: scale(1.02); opacity: 1; }
+          100% { transform: scale(1); opacity: 0.9; }
+        }
+      `}</style>
+
+      {/* ── LEFT panel — 40% Width with Ambient Mesh Background ── */}
       <div style={{
-        flex: "0 0 45%",
-        background: "linear-gradient(145deg, #38bdf8 0%, #818cf8 60%, #6366f1 100%)",
+        flex: "0 0 40%",
+        background: "#0b1220", 
         display: "flex",
         flexDirection: "column",
         justifyContent: "space-between",
         padding: "52px 56px",
         overflow: "hidden",
+        position: "relative",
+        boxSizing: "border-box",
+        borderRight: "1px solid rgba(255, 255, 255, 0.04)"
       }}>
+        
+        {/* Left Side Ambient mesh glow circles */}
+        <div style={{
+          position: "absolute", width: "450px", height: "450px", bottom: "-100px", right: "-50px", borderRadius: "50%",
+          background: "radial-gradient(circle, rgba(99,102,241,0.14) 0%, rgba(56,189,248,0) 70%)",
+          animation: "floatTwo 18s infinite ease-in-out", pointerEvents: "none"
+        }} />
+        <div style={{
+          position: "absolute", width: "400px", height: "400px", top: "-50px", left: "-80px", borderRadius: "50%",
+          background: "radial-gradient(circle, rgba(56,189,248,0.12) 0%, rgba(99,102,241,0) 70%)",
+          animation: "floatOne 14s infinite ease-in-out", pointerEvents: "none", animationDelay: "1s"
+        }} />
 
-        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+        {/* Left Side Floating Background Emojis */}
+        <div style={{ position: "absolute", left: "10%", fontSize: "36px", animation: "floatEmojiUp 12s infinite linear", animationDelay: "0s", pointerEvents: "none", zIndex: 1 }}>💬</div>
+        <div style={{ position: "absolute", left: "45%", fontSize: "28px", animation: "floatEmojiUp 16s infinite linear", animationDelay: "4s", pointerEvents: "none", zIndex: 1 }}>👋</div>
+        <div style={{ position: "absolute", right: "15%", fontSize: "32px", animation: "floatEmojiUp 14s infinite linear", animationDelay: "8s", pointerEvents: "none", zIndex: 1 }}>✨</div>
+
+        {/* Brand Header */}
+        <div style={{ display: "flex", alignItems: "center", gap: "12px", position: "relative", zIndex: 2 }}>
           <div style={{
             width: "40px", height: "40px", borderRadius: "12px",
-            background: "rgba(255,255,255,0.22)",
+            background: "linear-gradient(135deg, #38bdf8, #6366f1)",
             display: "flex", alignItems: "center", justifyContent: "center",
-            backdropFilter: "blur(4px)",
+            boxShadow: "0 4px 14px rgba(99,102,241,0.4)"
           }}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
@@ -103,78 +164,108 @@ export default function AuthGate({
           <span style={{ color: "white", fontWeight: 700, fontSize: "18px", letterSpacing: "-0.3px" }}>ChatApp</span>
         </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: "18px", maxWidth: "460px" }}>
+        {/* Chat Mockup Centerpiece with Glassmorphism */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "18px", maxWidth: "460px", position: "relative", zIndex: 2 }}>
           <div style={{ display: "flex", alignItems: "flex-end", gap: "12px" }}>
-            <div style={{ width: "42px", height: "42px", borderRadius: "50%", background: "rgba(255,255,255,0.3)", flexShrink: 0 }} />
+            <div style={{ width: "42px", height: "42px", borderRadius: "50%", background: "linear-gradient(135deg, #38bdf8, #818cf8)", flexShrink: 0 }} />
             <div style={{
-              background: "rgba(255,255,255,0.22)", color: "white",
+              background: "rgba(255, 255, 255, 0.05)", color: "#e2e8f0",
               fontSize: "15px", padding: "13px 20px",
               borderRadius: "22px 22px 22px 5px",
-              boxShadow: "0 2px 12px rgba(0,0,0,0.1)",
+              border: "1px solid rgba(255,255,255,0.06)",
+              backdropFilter: "blur(8px)",
+              boxShadow: "0 4px 16px rgba(0,0,0,0.2)",
             }}>
               Hey, what&apos;s up! 👋
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "flex-end", gap: "12px", flexDirection: "row-reverse" }}>
-            <div style={{ width: "42px", height: "42px", borderRadius: "50%", background: "rgba(255,255,255,0.3)", flexShrink: 0 }} />
+            <div style={{ width: "42px", height: "42px", borderRadius: "50%", background: "linear-gradient(135deg, #6366f1, #818cf8)", flexShrink: 0 }} />
             <div style={{
-              background: "rgba(255,255,255,0.35)", color: "white",
+              background: "linear-gradient(135deg, rgba(56,189,248,0.2), rgba(99,102,241,0.2))", color: "#ffffff",
               fontSize: "15px", padding: "13px 20px",
               borderRadius: "22px 22px 5px 22px",
-              boxShadow: "0 2px 12px rgba(0,0,0,0.1)",
+              border: "1px solid rgba(56,189,248,0.2)",
+              backdropFilter: "blur(8px)",
+              boxShadow: "0 4px 16px rgba(99,102,241,0.15)",
+              animation: "gentlePulse 4s infinite ease-in-out"
             }}>
               Nothing much, you? 😄
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "flex-end", gap: "12px" }}>
-            <div style={{ width: "42px", height: "42px", borderRadius: "50%", background: "rgba(255,255,255,0.3)", flexShrink: 0 }} />
+            <div style={{ width: "42px", height: "42px", borderRadius: "50%", background: "linear-gradient(135deg, #38bdf8, #818cf8)", flexShrink: 0 }} />
             <div style={{
-              background: "rgba(255,255,255,0.22)", color: "white",
+              background: "rgba(255, 255, 255, 0.05)", color: "#e2e8f0",
               fontSize: "15px", padding: "13px 20px",
               borderRadius: "22px 22px 22px 5px",
-              boxShadow: "0 2px 12px rgba(0,0,0,0.1)",
+              border: "1px solid rgba(255,255,255,0.06)",
+              backdropFilter: "blur(8px)",
+              boxShadow: "0 4px 16px rgba(0,0,0,0.2)",
             }}>
               Just joined the chat! 🎉
             </div>
           </div>
-          <div style={{ display: "flex", alignItems: "flex-end", gap: "12px", flexDirection: "row-reverse" }}>
-            <div style={{ width: "42px", height: "42px", borderRadius: "50%", background: "rgba(255,255,255,0.3)", flexShrink: 0 }} />
-            <div style={{
-              background: "rgba(255,255,255,0.15)",
-              padding: "13px 20px",
-              borderRadius: "22px 22px 5px 22px",
-              display: "flex", gap: "6px", alignItems: "center",
-            }}>
-              <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "rgba(255,255,255,0.9)", display: "inline-block" }} />
-              <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "rgba(255,255,255,0.6)", display: "inline-block" }} />
-              <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "rgba(255,255,255,0.3)", display: "inline-block" }} />
-            </div>
-          </div>
         </div>
 
-        <div>
+        {/* Bottom Heading Info */}
+        <div style={{ position: "relative", zIndex: 2 }}>
           <h2 style={{ color: "white", fontSize: "32px", fontWeight: 800, margin: "0 0 12px", letterSpacing: "-1px", lineHeight: 1.2 }}>
             Connect instantly.
           </h2>
-          <p style={{ color: "rgba(255,255,255,0.7)", fontSize: "15px", lineHeight: 1.7, margin: 0, maxWidth: "400px" }}>
+          <p style={{ color: "#94a3b8", fontSize: "15px", lineHeight: 1.7, margin: 0, maxWidth: "400px" }}>
             Real-time chat with people around you. Create an account to get started.
           </p>
         </div>
       </div>
 
-      {/* ── RIGHT panel — form ── */}
+      {/* ── RIGHT panel — 60% Width layout with Form Card ── */}
       <div style={{
         flex: "0 0 60%",
-        background: "#ffffff",
+        background: "#080d16", 
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
         padding: "40px",
+        position: "relative",
+        overflow: "hidden",
+        boxSizing: "border-box"
       }}>
-        <div style={{ width: "100%", maxWidth: "380px" }}>
+        
+        {/* Right Side Deep Ambient Mesh Glows */}
+        <div style={{
+          position: "absolute", width: "500px", height: "500px", top: "-100px", right: "-50px", borderRadius: "50%",
+          background: "radial-gradient(circle, rgba(56,189,248,0.18) 0%, rgba(99,102,241,0) 70%)",
+          animation: "floatOne 16s infinite ease-in-out", pointerEvents: "none"
+        }} />
+        <div style={{
+          position: "absolute", width: "550px", height: "550px", bottom: "-150px", left: "-100px", borderRadius: "50%",
+          background: "radial-gradient(circle, rgba(99,102,241,0.15) 0%, rgba(56,189,248,0) 70%)",
+          animation: "floatTwo 20s infinite ease-in-out", pointerEvents: "none", animationDelay: "1.5s"
+        }} />
+
+        {/* Right Side Floating Background Emojis */}
+        <div style={{ position: "absolute", left: "15%", fontSize: "26px", animation: "floatEmojiUp 11s infinite linear", animationDelay: "2s", pointerEvents: "none", zIndex: 1 }}>🚀</div>
+        <div style={{ position: "absolute", left: "40%", fontSize: "34px", animation: "floatEmojiUp 15s infinite linear", animationDelay: "6s", pointerEvents: "none", zIndex: 1 }}>💬</div>
+        <div style={{ position: "absolute", right: "20%", fontSize: "30px", animation: "floatEmojiUp 13s infinite linear", animationDelay: "1s", pointerEvents: "none", zIndex: 1 }}>🔥</div>
+        <div style={{ position: "absolute", right: "45%", fontSize: "24px", animation: "floatEmojiUp 17s infinite linear", animationDelay: "9s", pointerEvents: "none", zIndex: 1 }}>🎉</div>
+
+        {/* Form Box Card container */}
+        <div style={{ 
+          width: "100%", 
+          maxWidth: "400px", 
+          position: "relative", 
+          zIndex: 2,
+          background: "rgba(13, 22, 38, 0.75)",
+          padding: "40px",
+          borderRadius: "24px",
+          border: "1px solid rgba(255, 255, 255, 0.07)",
+          backdropFilter: "blur(20px)",
+          boxShadow: "0 24px 60px rgba(0, 0, 0, 0.45)"
+        }}>
 
           <div style={{ marginBottom: "32px" }}>
-            <h1 style={{ fontSize: "32px", fontWeight: 800, color: "#0f172a", margin: "0 0 10px", letterSpacing: "-1px" }}>
+            <h1 style={{ fontSize: "32px", fontWeight: 800, color: "#ffffff", margin: "0 0 10px", letterSpacing: "-1px" }}>
               {mode === "login" ? "Welcome back 👋" : "Create account 🚀"}
             </h1>
             <p style={{ fontSize: "15px", color: "#94a3b8", margin: 0, lineHeight: 1.6 }}>
@@ -186,7 +277,7 @@ export default function AuthGate({
 
           {/* Mode toggle */}
           <div style={{
-            display: "flex", gap: "4px", background: "#f1f5f9",
+            display: "flex", gap: "4px", background: "rgba(255,255,255,0.05)",
             borderRadius: "12px", padding: "4px", marginBottom: "28px",
           }}>
             {(["login", "register"] as Mode[]).map((m) => (
@@ -194,11 +285,11 @@ export default function AuthGate({
                 key={m}
                 onClick={() => switchMode(m)}
                 style={{
-                  flex: 1, padding: "10px", borderRadius: "9px", border: "none",
+                  flex: 1, padding: "12px", borderRadius: "9px", border: "none",
                   fontSize: "14px", fontWeight: 700, cursor: "pointer",
-                  background: mode === m ? "white" : "transparent",
-                  color: mode === m ? "#0f172a" : "#94a3b8",
-                  boxShadow: mode === m ? "0 2px 8px rgba(0,0,0,0.08)" : "none",
+                  background: mode === m ? "rgba(255,255,255,0.1)" : "transparent",
+                  color: mode === m ? "#ffffff" : "#64748b",
+                  boxShadow: mode === m ? "0 4px 12px rgba(0,0,0,0.25)" : "none",
                   transition: "all 0.2s",
                 }}
               >
@@ -264,8 +355,8 @@ export default function AuthGate({
 
           {error && (
             <div style={{
-              fontSize: "13px", color: "#dc2626", background: "#fef2f2",
-              border: "1px solid #fecaca", borderRadius: "10px",
+              fontSize: "13px", color: "#f87171", background: "rgba(220,38,38,0.08)",
+              border: "1px solid rgba(248,113,113,0.18)", borderRadius: "10px",
               padding: "10px 14px", marginBottom: "16px",
             }}>
               {error}
@@ -282,8 +373,8 @@ export default function AuthGate({
               cursor: isValid && !submitting ? "pointer" : "not-allowed",
               background: isValid && !submitting
                 ? "linear-gradient(135deg, #38bdf8, #6366f1)"
-                : "#e2e8f0",
-              color: isValid && !submitting ? "white" : "#94a3b8",
+                : "rgba(255,255,255,0.04)",
+              color: isValid && !submitting ? "white" : "#475569",
               boxShadow: isValid && !submitting ? "0 8px 24px rgba(99,102,241,0.35)" : "none",
               transition: "all 0.2s",
               marginTop: "4px",
@@ -294,7 +385,7 @@ export default function AuthGate({
               : mode === "login" ? "Log In →" : "Create Account →"}
           </button>
 
-          <p style={{ fontSize: "12px", color: "#cbd5e1", textAlign: "center", marginTop: "20px" }}>
+          <p style={{ fontSize: "12px", color: "#475569", textAlign: "center", marginTop: "20px" }}>
             {mode === "login" ? "Password must be at least 6 characters." : "Letters, numbers and underscores · 3–20 chars"}
           </p>
         </div>
@@ -308,12 +399,13 @@ const inputStyle: React.CSSProperties = {
   width: "100%",
   padding: "14px 18px",
   borderRadius: "14px",
-  border: "2px solid #e2e8f0",
-  background: "#f8fafc",
+  border: "2px solid rgba(255,255,255,0.06)",
+  background: "rgba(255,255,255,0.02)",
   outline: "none",
   fontSize: "16px",
-  color: "#1e293b",
+  color: "#ffffff",
   boxSizing: "border-box",
+  transition: "all 0.2s",
 };
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {

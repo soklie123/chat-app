@@ -35,7 +35,7 @@ export default function Home() {
   };
 
   const {
-    socket, connected, onlineUsers, allUsers, rooms, createRoom, logout,
+    socket, connected, onlineUsers, allUsers, rooms, createRoom, logout,userProfiles
   } = useChat(username);
 
   const {
@@ -260,6 +260,7 @@ export default function Home() {
           onOpenRoom={handleOpenRoom}
           onCreateGroup={handleCreateGroup}
           roomUnread={roomUnread}  
+          userProfiles={userProfiles}
         />
 
         <div className="flex-1 flex flex-col overflow-hidden">

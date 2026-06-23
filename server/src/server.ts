@@ -14,7 +14,7 @@ async function bootstrap() {
   const io = new Server(server, {
     cors: { origin: "*" },
   });
-
+  app.set("io", io);
   // Verify JWT on the handshake before any "connection" handler runs.
   // socket.data.username / socket.data.userId are trusted from here on.
   io.use(socketAuthMiddleware);

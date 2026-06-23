@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { io, Socket } from "socket.io-client";
 import { getToken } from "../lib/api";
 
@@ -25,6 +25,11 @@ export type RoomSummary = {
   memberCount: number;
   members: string[];
   createdBy: string;
+  // ── client-tracked, not from server room_list ──
+  unread: number;
+  lastMessage?: string;
+  lastMessageFrom?: string;
+  lastMessageTime?: string;
 };
 
 export function useChat(username: string) {
@@ -35,6 +40,13 @@ export function useChat(username: string) {
   const [allUsers, setAllUsers] = useState<string[]>([]);
   const [rooms, setRooms] = useState<RoomSummary[]>([]);
   const [authError, setAuthError] = useState<string | null>(null);
+
+  // Keep a ref mirror so socket event handlers always see fresh room state
+  // without needing to be re-registered on every rooms change.
+  const roomsRef = useRef<RoomSummary[]>([]);
+  useEffect(() => {
+    roomsRef.current = rooms;
+  }, [rooms]);
 
   useEffect(() => {
     if (!username) return;
@@ -59,7 +71,7 @@ export function useChat(username: string) {
       setConnected(true);
       setSocket(sock);
       setAuthError(null);
-      sock.emit("register_user"); // ← just emit, no username needed (server reads from JWT)
+      sock.emit("register_user");
     });
 
     sock.on("connect_error", (err) => {
@@ -70,7 +82,24 @@ export function useChat(username: string) {
     sock.on("disconnect", () => setConnected(false));
     sock.on("online_users", (users: string[]) => setOnlineUsers(users));
     sock.on("all_users", (users: string[]) => setAllUsers(users));
-    sock.on("room_list", (roomList: RoomSummary[]) => setRooms(roomList));
+
+    // Merge server room_list with locally-tracked unread/lastMessage state,
+    // so a fresh broadcast (e.g. someone else joins) doesn't wipe badges.
+    sock.on("room_list", (roomList: Omit<RoomSummary, "unread" | "lastMessage" | "lastMessageFrom" | "lastMessageTime">[]) => {
+      setRooms((prev) => {
+        const prevById = new Map(prev.map((r) => [r.id, r]));
+        return roomList.map((r) => {
+          const existing = prevById.get(r.id);
+          return {
+            ...r,
+            unread: existing?.unread ?? 0,
+            lastMessage: existing?.lastMessage,
+            lastMessageFrom: existing?.lastMessageFrom,
+            lastMessageTime: existing?.lastMessageTime,
+          };
+        });
+      });
+    });
 
     return () => {
       sock.emit("unregister_user");
@@ -83,6 +112,33 @@ export function useChat(username: string) {
   const createRoom = (roomName: string) => {
     socketRef.current?.emit("create_room", roomName);
   };
+
+  // ── Called by useRoom when a message arrives for a room that ISN'T open ──
+  const bumpRoomUnread = useCallback((roomId: string, lastMessage: string, from: string, time: string) => {
+    setRooms((prev) =>
+      prev.map((r) =>
+        r.id === roomId
+          ? { ...r, unread: r.unread + 1, lastMessage, lastMessageFrom: from, lastMessageTime: time }
+          : r
+      )
+    );
+  }, []);
+
+  // ── Called by useRoom whenever a room IS open, to keep preview text fresh without bumping unread ──
+  const setRoomPreview = useCallback((roomId: string, lastMessage: string, from: string, time: string) => {
+    setRooms((prev) =>
+      prev.map((r) =>
+        r.id === roomId ? { ...r, lastMessage, lastMessageFrom: from, lastMessageTime: time } : r
+      )
+    );
+  }, []);
+
+  // ── Called by useRoom.openRoom to clear the badge ──
+  const clearRoomUnread = useCallback((roomId: string) => {
+    setRooms((prev) =>
+      prev.map((r) => (r.id === roomId ? { ...r, unread: 0 } : r))
+    );
+  }, []);
 
   const logout = () => {
     if (socketRef.current) {
@@ -105,5 +161,8 @@ export function useChat(username: string) {
     createRoom,
     logout,
     authError,
+    bumpRoomUnread,
+    setRoomPreview,
+    clearRoomUnread,
   };
 }

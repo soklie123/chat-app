@@ -2,11 +2,24 @@ import { Router } from "express";
 import { User } from "../models/User";
 import { hashPassword, comparePassword } from "../utils/password";
 import { signToken } from "../utils/jwt";
-
+import { upload, uploadToCloudinary } from "../cloudinary";
+import { requireAuth } from "../middleware/auth.middleware";
+import { Server } from "socket.io";
 export const authRouter = Router();
 
 const USERNAME_REGEX = /^[a-zA-Z0-9_]{3,20}$/;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function publicUser(user: any) {
+  return {
+    username: user.username,
+    email: user.email,
+    bio: user.bio ?? "",
+    avatarUrl: user.avatarUrl ?? "",
+    lastSeen: user.lastSeen,
+    createdAt: user.createdAt,
+  };
+}
 
 // POST /auth/register
 authRouter.post("/register", async (req, res) => {
@@ -62,7 +75,7 @@ authRouter.post("/register", async (req, res) => {
 
     res.status(201).json({
       token,
-      user: { username: user.username, email: user.email },
+      user: publicUser(user),
     });
   } catch (err: any) {
     console.error("Register error:", err?.message ?? err);
@@ -104,7 +117,7 @@ authRouter.post("/login", async (req, res) => {
 
     res.json({
       token,
-      user: { username: user.username, email: user.email },
+      user: publicUser(user),
     });
   } catch (err: any) {
     console.error("Login error:", err?.message ?? err);
@@ -112,28 +125,92 @@ authRouter.post("/login", async (req, res) => {
   }
 });
 
-// GET /auth/me  (used by frontend to validate a stored token on app load)
-authRouter.get("/me", async (req, res) => {
+// GET /auth/me
+authRouter.get("/me", requireAuth, async (req, res) => {
   try {
-    const authHeader = req.headers.authorization;
-    const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
-
-    if (!token) {
-      res.status(401).json({ error: "No token provided." });
-      return;
-    }
-
-    const { verifyToken } = await import("../utils/jwt.js");
-    const payload = verifyToken(token);
-
-    const user = await User.findById(payload.userId);
+    const user = await User.findById(req.userId);
     if (!user) {
       res.status(401).json({ error: "User not found." });
       return;
     }
 
-    res.json({ user: { username: user.username, email: user.email } });
-  } catch (err) {
-    res.status(401).json({ error: "Invalid or expired token." });
+    res.json({ user: publicUser(user) });
+  } catch (err: any) {
+    console.error("Me error:", err?.message ?? err);
+    res.status(500).json({ error: "Failed to load profile." });
+  }
+});
+
+// PATCH /auth/profile  (multipart/form-data: optional "avatar" file, optional "bio" text field)
+authRouter.patch("/profile", requireAuth, upload.single("avatar"), async (req, res) => {
+  try {
+    const user = await User.findById(req.userId);
+    if (!user) {
+      res.status(401).json({ error: "User not found." });
+      return;
+    }
+
+    if (typeof req.body?.bio === "string") {
+      user.bio = req.body.bio.slice(0, 140);
+    }
+
+    const file = req.file as Express.Multer.File | undefined;
+    if (file) {
+      const { url } = await uploadToCloudinary(file.buffer, file.mimetype, file.originalname);
+      user.avatarUrl = url;
+    }
+
+   await user.save();
+
+const io = req.app.get("io") as Server;
+
+io.emit("user_profile_updated", {
+  username: user.username,
+  avatarUrl: user.avatarUrl ?? "",
+  bio: user.bio ?? "",
+});
+
+
+    res.json({ user: publicUser(user) });
+  } catch (err: any) {
+    console.error("Update profile error:", err?.message ?? err);
+    res.status(400).json({ error: "Failed to update profile." });
+  }
+});
+
+// PATCH /auth/change-password
+authRouter.patch("/change-password", requireAuth, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body ?? {};
+
+    if (!currentPassword || !newPassword) {
+      res.status(400).json({ error: "Current and new password are required." });
+      return;
+    }
+
+    if (typeof newPassword !== "string" || newPassword.length < 6) {
+      res.status(400).json({ error: "New password must be at least 6 characters." });
+      return;
+    }
+
+    const user = await User.findById(req.userId);
+    if (!user) {
+      res.status(401).json({ error: "User not found." });
+      return;
+    }
+
+    const valid = await comparePassword(currentPassword, user.passwordHash);
+    if (!valid) {
+      res.status(401).json({ error: "Current password is incorrect." });
+      return;
+    }
+
+    user.passwordHash = await hashPassword(newPassword);
+    await user.save();
+
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error("Change password error:", err?.message ?? err);
+    res.status(400).json({ error: "Failed to change password." });
   }
 });

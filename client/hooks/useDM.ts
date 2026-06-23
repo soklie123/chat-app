@@ -223,19 +223,11 @@ export function useDM(socket: Socket | null, username: string) {
 
     socket.on("dm_user_stop_typing", () => setDmTyping(null));
 
-    // Group created — add to conversations
-    socket.on("room_created", (roomId: string) => {
-      updateConversation(roomId, "Group created", new Date().toLocaleTimeString([], {
-        hour: "2-digit", minute: "2-digit",
-      }), false, true);
-    });
-
-    // Invited to a group
-    socket.on("invited_to_group", ({ groupName }: { groupName: string }) => {
-      updateConversation(groupName, "You were added to the group", new Date().toLocaleTimeString([], {
-        hour: "2-digit", minute: "2-digit",
-      }), true, true);
-    });
+    // NOTE: "room_created" listener intentionally removed.
+    // Groups live exclusively in `rooms` state (via useRoom.ts / "room_list").
+    // Previously this handler also called updateConversation(roomId, "Group created", ...),
+    // which created a duplicate sidebar entry for every new group — one from `rooms`
+    // (the "# room" row) and one from `conversations` (the "Group created" row).
 
     return () => {
       socket.off("dm_history");
@@ -246,8 +238,6 @@ export function useDM(socket: Socket | null, username: string) {
       socket.off("messages_seen");
       socket.off("dm_user_typing");
       socket.off("dm_user_stop_typing");
-      socket.off("room_created");
-      socket.off("invited_to_group");
     };
   }, [socket, username]);
 

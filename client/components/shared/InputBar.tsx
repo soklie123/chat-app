@@ -80,8 +80,10 @@ export default function InputBar({
     }
   };
 
+  const hasContent = !!(message.trim() || preview || forwardMsg);
+
   return (
-    <div className="bg-white border-t border-slate-100 flex-shrink-0">
+    <div className="bg-[#17212b] border-t border-[#0d1821] shrink-0">
 
       {/* Reply bar */}
       {replyTo && onCancelReply && (
@@ -90,14 +92,22 @@ export default function InputBar({
 
       {/* Forward bar */}
       {forwardMsg && onCancelForward && (
-        <div className="px-4 py-2.5 bg-amber-50 border-t border-amber-100 flex items-center gap-3">
-          <div className="w-1 h-8 bg-amber-400 rounded-full flex-shrink-0" />
-          <div className="flex-1 min-w-0">
-            <div className="text-[11px] font-semibold text-amber-600">Forwarded from @{forwardMsg.fromUsername}</div>
-            <div className="text-[11px] text-slate-500 truncate">{forwardMsg.text || "📎 File"}</div>
+        <div className="flex items-center gap-2.5 px-3.5 py-[7px] border-t border-[#0d1821]">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#f4a93f" strokeWidth="2.2" strokeLinecap="round" className="shrink-0">
+            <polyline points="15 17 20 12 15 7" /><path d="M4 18v-2a4 4 0 0 1 4-4h12" />
+          </svg>
+          <div className="flex items-stretch gap-2.5 flex-1 min-w-0">
+            <div className="w-0.5 min-h-[34px] bg-[#f4a93f] rounded-sm shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="text-[12.5px] font-semibold text-[#f4a93f] mb-px">Forwarded from {forwardMsg.fromUsername}</div>
+              <div className="text-[12.5px] text-[#8b98a5] truncate">{forwardMsg.text || "📎 File"}</div>
+            </div>
           </div>
-          <button onClick={() => { setMessage(""); setPreview(null); onCancelForward?.(); }} className="text-slate-400 hover:text-slate-600 p-1">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <button
+            onClick={() => { setMessage(""); setPreview(null); onCancelForward?.(); }}
+            className="w-7 h-7 flex items-center justify-center rounded-full border-none bg-transparent text-[#6c7883] cursor-pointer transition-colors duration-150 hover:bg-[#202b36] hover:text-[#c5cdd6] shrink-0"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
               <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
             </svg>
           </button>
@@ -106,10 +116,13 @@ export default function InputBar({
 
       {/* File preview */}
       {preview && (
-        <div className="px-4 pt-3 flex items-start gap-2">
+        <div className="flex items-start gap-2 px-4 pt-2.5">
           <FilePreview {...preview} />
-          <button onClick={() => setPreview(null)} className="mt-1 text-slate-400 hover:text-red-400 transition-colors">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <button
+            onClick={() => setPreview(null)}
+            className="w-7 h-7 flex items-center justify-center rounded-full border-none bg-transparent text-[#6c7883] cursor-pointer transition-colors duration-150 hover:bg-[#202b36] hover:text-white shrink-0"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
               <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
             </svg>
           </button>
@@ -118,26 +131,27 @@ export default function InputBar({
 
       {/* Recording indicator */}
       {recording && (
-        <div className="px-4 py-2 flex items-center gap-2 text-red-500 text-sm bg-red-50">
+        <div className="px-4 py-2 flex items-center gap-2 text-red-400 text-[13px] bg-[#1c2a38] border-t border-[#0d1821]">
           <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
           Recording… release to send
         </div>
       )}
 
       {/* Input row */}
-      <div className="flex items-center gap-2 px-3 py-3">
+      <div className="flex items-center gap-1.5 px-2.5 py-2">
+
         {/* Attach file */}
         <button
           onClick={() => fileInputRef.current?.click()}
           disabled={uploading || recording}
-          className="w-9 h-9 rounded-full flex items-center justify-center text-slate-400 hover:text-[#0088cc] hover:bg-slate-100 transition-all flex-shrink-0"
+          className={`w-[38px] h-[38px] flex items-center justify-center rounded-full border-none bg-transparent cursor-pointer transition-colors duration-150 shrink-0 hover:bg-[#202b36] hover:text-[#5288c1] ${uploading ? "text-[#5288c1]" : "text-[#8b98a5]"}`}
         >
           {uploading ? (
-            <svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg className="animate-spin" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M21 12a9 9 0 1 1-6.219-8.56" />
             </svg>
           ) : (
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
               <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
             </svg>
           )}
@@ -147,13 +161,13 @@ export default function InputBar({
 
         {/* Text input */}
         <input
-          className="flex-1 px-4 py-2.5 rounded-full border border-slate-200 bg-slate-50 text-sm text-slate-800 outline-none focus:border-[#0088cc] focus:ring-2 focus:ring-[#0088cc]/15 transition-all placeholder:text-slate-400"
+          className="flex-1 h-10 bg-[#242f3d] border-none rounded-[22px] px-[18px] text-[14.5px] text-white outline-none placeholder:text-[#6c7883]"
           value={message}
           onChange={(e) => { setMessage(e.target.value); onTyping(e.target.value); }}
           placeholder={
             recording ? "Recording…"
             : preview ? "Add a caption…"
-            : forwardMsg ? `Add a caption…`
+            : forwardMsg ? "Add a caption…"
             : replyTo ? `Replying to @${replyTo.username}…`
             : `Message #${currentRoom}…`
           }
@@ -161,17 +175,17 @@ export default function InputBar({
         />
 
         {/* Voice / Send */}
-        {!message.trim() && !preview && !forwardMsg ? (
+        {!hasContent ? (
           <button
             aria-label="Voice record"
             onMouseDown={start} onMouseUp={stop} onMouseLeave={stop}
             onTouchStart={start} onTouchEnd={stop}
             disabled={uploading}
-            className={`w-9 h-9 rounded-full flex items-center justify-center text-white flex-shrink-0 transition-all active:scale-95 ${
-              recording ? "bg-red-500 animate-pulse" : "bg-[#0088cc] hover:bg-[#0077b6]"
+            className={`w-10 h-10 flex items-center justify-center rounded-full border-none text-white cursor-pointer transition-all active:scale-95 shrink-0 ${
+              recording ? "bg-red-500 animate-pulse" : "bg-[#5288c1] hover:bg-[#4377aa]"
             }`}
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
               <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
               <line x1="12" y1="19" x2="12" y2="23" />
@@ -182,10 +196,9 @@ export default function InputBar({
           <button
             onClick={handleSend}
             aria-label="Send"
-            disabled={!forwardMsg && !message.trim() && !preview}
-            className="w-9 h-9 rounded-full bg-[#0088cc] flex items-center justify-center text-white flex-shrink-0 hover:bg-[#0077b6] active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            className="w-10 h-10 flex items-center justify-center rounded-full border-none bg-[#5288c1] text-white cursor-pointer transition-colors duration-150 shrink-0 hover:bg-[#4377aa] active:scale-95"
           >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round">
               <line x1="22" y1="2" x2="11" y2="13" />
               <polygon points="22 2 15 22 11 13 2 9 22 2" />
             </svg>

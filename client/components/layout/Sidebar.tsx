@@ -17,6 +17,7 @@ export default function Sidebar({
   onOpenDM,
   onOpenRoom,
   onCreateGroup,
+  roomUnread,
 }: {
   username: string;
   onLogout: () => void;
@@ -29,6 +30,7 @@ export default function Sidebar({
   onOpenDM: (username: string) => void;
   onOpenRoom: (roomId: string) => void;
   onCreateGroup: (name: string, members: string[]) => void;
+  roomUnread: Record<string, number>;
 }) {
   const [creatingGroup, setCreatingGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
@@ -81,6 +83,8 @@ export default function Sidebar({
 
   const renderRoomRow = (room: RoomSummary) => {
     const isActive = currentRoom === room.id;
+    const unread = roomUnread[room.id] ?? 0;
+
     return (
       <button
         key={room.id}
@@ -108,6 +112,15 @@ export default function Sidebar({
             {room.memberCount ?? room.members?.length ?? 0} members
           </div>
         </div>
+
+        {/* Unread badge — mirrors DM style */}
+        {unread > 0 && (
+          <div className="shrink-0 min-w-[20px] h-5 px-1.5 rounded-full bg-[#5288c1] flex items-center justify-center">
+            <span className="text-[11px] font-bold text-white leading-none">
+              {unread > 99 ? "99+" : unread}
+            </span>
+          </div>
+        )}
       </button>
     );
   };
@@ -324,7 +337,6 @@ export default function Sidebar({
         {/* Groups */}
         {filteredRooms.length > 0 && (
           <>
-           
             {filteredRooms.map(renderRoomRow)}
           </>
         )}
@@ -332,7 +344,6 @@ export default function Sidebar({
         {/* Existing conversations (DMs) */}
         {filteredConversations.length > 0 && (
           <>
-          
             <DMList
               conversations={filteredConversations}
               activeDM={activeDM}
@@ -350,7 +361,6 @@ export default function Sidebar({
 
         {filteredOffline.length > 0 && (
           <>
-        
             {filteredOffline.map(u => renderUserRow(u, false))}
           </>
         )}

@@ -9,7 +9,10 @@ import { registerDMHandlers } from "./dm.handlers";
 
 export function registerSocketHandlers(io: Server) {
   io.on("connection", (socket: Socket) => {
-    console.log("User connected:", socket.id);
+    // socket.data.username is set by socketAuthMiddleware (io.use) after
+    // verifying the JWT — it is trusted, unlike a client-emitted string.
+    const verifiedUsername = socket.data.username as string | undefined;
+    console.log("User connected:", socket.id, "as", verifiedUsername);
 
     registerCallHandlers(io, socket);
     registerRoomHandlers(io, socket);

@@ -40,6 +40,7 @@ export function useRoom(socket: Socket | null, username: string) {
   const [roomMessages, setRoomMessages] = useState<ChatMessage[]>([]);
   const [hasMoreHistory, setHasMoreHistory] = useState(false);
   const [typingUser, setTypingUser] = useState<TypingUser | null>(null);
+  const [roomUnread, setRoomUnread] = useState<Record<string, number>>({});
 
   const currentRoomRef = useRef<string | null>(null);
   useEffect(() => {
@@ -65,7 +66,19 @@ export function useRoom(socket: Socket | null, username: string) {
     };
 
     const onReceive = (payload: RawServerMessage) => {
-      if (payload.roomId !== currentRoomRef.current) return;
+      const targetRoom = payload.roomId;
+      if (!targetRoom) return;
+
+      // Bump unread for rooms not currently open (fallback for same-socket delivery)
+      if (targetRoom !== currentRoomRef.current && payload.username !== username) {
+        setRoomUnread((prev) => ({
+          ...prev,
+          [targetRoom]: (prev[targetRoom] ?? 0) + 1,
+        }));
+      }
+
+      if (targetRoom !== currentRoomRef.current) return;
+
       setRoomMessages((prev) => {
         if (payload.tempId && pendingTempIds.current.has(payload.tempId)) {
           pendingTempIds.current.delete(payload.tempId);
@@ -73,8 +86,33 @@ export function useRoom(socket: Socket | null, username: string) {
             m._id === payload.tempId ? toChatMessage(payload, username) : m
           );
         }
+
+        const alreadyPresent = prev.some((m) => m._id === payload._id);
+        if (alreadyPresent) return prev;
+
+        if (payload.tempId) {
+          const stillHasOptimistic = prev.some((m) => m._id === payload.tempId);
+          if (stillHasOptimistic) {
+            return prev.map((m) =>
+              m._id === payload.tempId ? toChatMessage(payload, username) : m
+            );
+          }
+        }
+
         return [...prev, toChatMessage(payload, username)];
       });
+    };
+
+    // ── NEW: lightweight unread bump from server for background rooms ──
+    const onUnreadBump = ({ roomId, username: fromUser }: { roomId: string; username: string }) => {
+      // Ignore if we sent it or if that room is currently open
+      if (fromUser === username) return;
+      if (roomId === currentRoomRef.current) return;
+
+      setRoomUnread((prev) => ({
+        ...prev,
+        [roomId]: (prev[roomId] ?? 0) + 1,
+      }));
     };
 
     const onUserTyping = (typingUsername: string) => {
@@ -92,6 +130,12 @@ export function useRoom(socket: Socket | null, username: string) {
 
     const onJoined = (roomId: string) => {
       setCurrentRoom(roomId);
+      setRoomUnread((prev) => {
+        if (!prev[roomId]) return prev;
+        const next = { ...prev };
+        delete next[roomId];
+        return next;
+      });
     };
 
     const onSeen = ({ messageIds }: { messageIds: string[] }) => {
@@ -102,13 +146,18 @@ export function useRoom(socket: Socket | null, username: string) {
       );
     };
 
-    // ── Leave / Delete / Clear handlers ───────────────────
     const onLeftGroup = ({ roomId }: { roomId: string }) => {
       if (currentRoomRef.current === roomId) {
         setCurrentRoom(null);
         setRoomMessages([]);
         setTypingUser(null);
       }
+      setRoomUnread((prev) => {
+        if (!(roomId in prev)) return prev;
+        const next = { ...prev };
+        delete next[roomId];
+        return next;
+      });
     };
 
     const onGroupDeleted = ({ roomId }: { roomId: string }) => {
@@ -117,6 +166,12 @@ export function useRoom(socket: Socket | null, username: string) {
         setRoomMessages([]);
         setTypingUser(null);
       }
+      setRoomUnread((prev) => {
+        if (!(roomId in prev)) return prev;
+        const next = { ...prev };
+        delete next[roomId];
+        return next;
+      });
     };
 
     const onRoomChatCleared = ({ roomId }: { roomId: string }) => {
@@ -125,13 +180,12 @@ export function useRoom(socket: Socket | null, username: string) {
       }
     };
 
-    const onGroupMemberLeft = (_: { roomId: string; username: string }) => {
-      // member strip updates automatically via room_list broadcast
-    };
+    const onGroupMemberLeft = (_: { roomId: string; username: string }) => {};
 
     socket.on("chat_history", onHistory);
     socket.on("older_messages", onOlder);
     socket.on("receive_message", onReceive);
+    socket.on("room_unread_bump", onUnreadBump);   // ← new
     socket.on("user_typing", onUserTyping);
     socket.on("user_stop_typing", onUserStopTyping);
     socket.on("message_reaction_updated", onReactionUpdated);
@@ -147,6 +201,7 @@ export function useRoom(socket: Socket | null, username: string) {
       socket.off("chat_history", onHistory);
       socket.off("older_messages", onOlder);
       socket.off("receive_message", onReceive);
+      socket.off("room_unread_bump", onUnreadBump);  // ← new
       socket.off("user_typing", onUserTyping);
       socket.off("user_stop_typing", onUserStopTyping);
       socket.off("message_reaction_updated", onReactionUpdated);
@@ -163,6 +218,12 @@ export function useRoom(socket: Socket | null, username: string) {
   const openRoom = useCallback(
     (roomId: string) => {
       if (!socket || !roomId) return;
+      setRoomUnread((prev) => {
+        if (!prev[roomId]) return prev;
+        const next = { ...prev };
+        delete next[roomId];
+        return next;
+      });
       if (currentRoomRef.current === roomId) return;
       setRoomMessages([]);
       setHasMoreHistory(false);
@@ -253,7 +314,6 @@ export function useRoom(socket: Socket | null, username: string) {
     [socket, username]
   );
 
-  // ── Leave / Delete / Clear actions ────────────────────
   const leaveGroup = useCallback(
     (roomId: string) => {
       if (!socket || !roomId) return;
@@ -283,6 +343,7 @@ export function useRoom(socket: Socket | null, username: string) {
     roomMessages,
     hasMoreHistory,
     typingUser,
+    roomUnread,
     openRoom,
     closeRoom,
     sendRoomMessage,
@@ -293,7 +354,6 @@ export function useRoom(socket: Socket | null, username: string) {
     leaveGroup,
     deleteGroup,
     deleteRoomChat,
-    
   };
 }
 
@@ -306,7 +366,6 @@ function toChatMessage(m: RawServerMessage, currentUsername: string): ChatMessag
     username: m.username,
     color: getAvatarColor(m.username),
     reactions: m.reactions ?? [],
-
     fileUrl: m.fileUrl,
     fileName: m.fileName,
     fileType: m.fileType,

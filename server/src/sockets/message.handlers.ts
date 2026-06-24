@@ -1,6 +1,7 @@
 import { Server, Socket } from "socket.io";
 import { Message } from "../models/Message";
-import { getSocketId } from "./state";
+import { Room } from "../models/Room";
+import { getSocketId, onlineUsers } from "./state";
 
 export function registerMessageHandlers(io: Server, socket: Socket) {
   // Recipient received a message → mark as delivered
@@ -59,7 +60,7 @@ export function registerMessageHandlers(io: Server, socket: Socket) {
       text: string;
       username: string;
       roomId: string;
-      tempId?: string; // for client-side tracking
+      tempId?: string;
       fileUrl?: string;
       fileName?: string;
       fileType?: string;
@@ -86,9 +87,9 @@ export function registerMessageHandlers(io: Server, socket: Socket) {
         forwarded,
       });
 
-      io.to(roomId).emit("receive_message", {
+      const payload = {
         _id: saved._id,
-        tempId, // echo back tempId for client to reconcile
+        tempId,
         text: text || "",
         username,
         roomId,
@@ -104,7 +105,37 @@ export function registerMessageHandlers(io: Server, socket: Socket) {
           hour: "2-digit",
           minute: "2-digit",
         }),
-      });
+      };
+
+      // Broadcast to all sockets currently joined to the Socket.io room
+      // (these are members who have that room open right now)
+      io.to(roomId).emit("receive_message", payload);
+
+      // ── Unread bump for members NOT currently in the Socket.io room ──
+      // Fetch all room members from DB, then notify each online member
+      // whose socket is NOT already in the room (i.e. they're in another chat).
+      const roomDoc = await Room.findOne({ name: roomId }).lean();
+      if (roomDoc?.members) {
+        for (const member of roomDoc.members) {
+          if (member === username) continue; // don't notify the sender
+
+          const memberSocketId = getSocketId(member);
+          if (!memberSocketId) continue; // member is offline
+
+          // Check if this socket is already in the Socket.io room
+          const memberSocket = io.sockets.sockets.get(memberSocketId);
+          if (!memberSocket) continue;
+
+          const alreadyInRoom = memberSocket.rooms.has(roomId);
+          if (alreadyInRoom) continue; // already got the broadcast above
+
+          // Send a lightweight unread-bump event to their personal socket
+          io.to(memberSocketId).emit("room_unread_bump", {
+            roomId,
+            username, // who sent it
+          });
+        }
+      }
     }
   );
 

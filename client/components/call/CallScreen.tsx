@@ -118,22 +118,36 @@ export default function CallScreen({
       {/* ── Main area ── */}
       <div className="flex-1 relative flex items-center justify-center overflow-hidden">
         {/* Hidden audio element for voice-only calls */}
-      <audio
-        ref={remoteAudioRef}
-        autoPlay
-        playsInline
-        style={{ display: "none" }}
-      />
+        <audio
+          ref={remoteAudioRef}
+          autoPlay
+          playsInline
+          style={{ display: "none" }}
+        />
 
-        {/* Remote video or avatar */}
-        {hasRemoteVid ? (
+        {/* Remote video (fullscreen) */}
+        {hasRemoteVid && (
           <video
             ref={remoteVideoRef}
             autoPlay
             playsInline
             className="w-full h-full object-cover"
           />
-        ) : (
+        )}
+
+        {/* Local video fullscreen — only when remote has NO video */}
+        {hasLocalVid && !hasRemoteVid && callState === "connected" && (
+          <video
+            ref={localVideoRef}
+            autoPlay
+            playsInline
+            muted
+            className={`w-full h-full object-cover ${!isSharing ? "scale-x-[-1]" : ""}`}
+          />
+        )}
+
+        {/* Avatar fallback — no video on either side */}
+        {!hasRemoteVid && !hasLocalVid && callState !== "receiving" && (
           <div className="flex flex-col items-center gap-4">
             <div className="w-28 h-28 rounded-full overflow-hidden ring-4 ring-white/10 shadow-2xl">
               <Avatar name={otherUser} size={112} />
@@ -141,14 +155,13 @@ export default function CallScreen({
             <div className="text-white text-2xl font-semibold">{otherUser}</div>
             <div className="text-white/50 text-sm tracking-wide">
               {callState === "calling"   && "Calling…"}
-              {callState === "receiving" && `Incoming ${callInfo.type} call`}
               {callState === "connected" && "Connected"}
             </div>
           </div>
         )}
 
-        {/* Local preview (picture-in-picture) */}
-        {hasLocalVid && callState === "connected" && (
+        {/* Local PiP — only when BOTH sides have video */}
+        {hasLocalVid && hasRemoteVid && callState === "connected" && (
           <div className="absolute bottom-4 right-4 w-32 h-44 rounded-2xl overflow-hidden ring-2 ring-white/20 shadow-2xl bg-black">
             <video
               ref={localVideoRef}
@@ -157,7 +170,6 @@ export default function CallScreen({
               muted
               className={`w-full h-full object-cover ${!isSharing ? "scale-x-[-1]" : ""}`}
             />
-            {/* Label */}
             <div className="absolute bottom-1.5 left-0 right-0 text-center text-[10px] text-white/60">
               {isSharing ? "Sharing screen" : "You"}
             </div>
@@ -177,15 +189,15 @@ export default function CallScreen({
           </div>
         )}
 
-        {/* Top bar — call info */}
+        {/* Top bar */}
         <div className="absolute top-0 left-0 right-0 px-5 py-4 flex items-center justify-between bg-gradient-to-b from-black/50 to-transparent">
           <div>
             <p className="text-white font-semibold">{otherUser}</p>
             <p className="text-white/50 text-xs">
               {callState === "connected"
                 ? remoteStream
-                  ? formatCallDuration(callDuration)  //  only show timer when stream exists
-                  : "Connecting…"                     //  show this until stream arrives
+                  ? formatCallDuration(callDuration)
+                  : "Connecting…"
                 : callState === "calling"
                 ? "Calling…"
                 : "Incoming"

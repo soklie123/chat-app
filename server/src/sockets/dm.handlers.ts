@@ -1,5 +1,5 @@
 import { Server, Socket } from "socket.io";
-import { DirectMessage } from "../models/DirectMessage";
+import { DirectMessage, IDirectMessage } from "../models/DirectMessage";
 import { onlineUsers, getSocketId } from "./state";
 
 export function registerDMHandlers(io: Server, socket: Socket) {
@@ -22,43 +22,41 @@ export function registerDMHandlers(io: Server, socket: Socket) {
     });
   });
 
-  socket.on(
-    "dm_send",
-    async ({
-      from,
-      to,
-      text,
-      tempId,
-      fileUrl,
-      fileName,
-      fileType,
-      isImage,
-      audioUrl,
-      audioDuration,
-      replyTo,
-      forwarded,
-      caption,
-      fromUsername,
-    }: {
-      from: string;
-      to: string;
-      text: string;
-      tempId?: string;
+  socket.on("dm_send", async ({
+    from,
+    to,
+    text,
+    tempId,
+    fileUrl,
+    fileName,
+    fileType,
+    isImage,
+    audioUrl,
+    audioDuration,
+    replyTo,
+    forwarded,
+    caption,
+    fromUsername,
+  }: {
+    from: string;
+    to: string;
+    text: string;
+    tempId?: string;
 
-      fileUrl?: string;
-      fileName?: string;
-      fileType?: string;
-      isImage?: boolean;
+    fileUrl?: string;
+    fileName?: string;
+    fileType?: string;
+    isImage?: boolean;
 
-      audioUrl?: string;
-      audioDuration?: number;
+    audioUrl?: string;
+    audioDuration?: number;
 
-      replyTo?: { _id: string; username: string; text: string };
-      forwarded?: boolean;
-      caption?: string;
-      fromUsername?: string;
-    }) => {
-      if (!from || !to || (!text && !fileUrl && !audioUrl)) return;
+    replyTo?: { _id: string; username: string; text: string };
+    forwarded?: boolean;
+    caption?: string;
+    fromUsername?: string;
+  }) => {
+    if (!from || !to || (!text && !fileUrl && !audioUrl)) return;
 
       const saved = await DirectMessage.create({
         from,
@@ -77,7 +75,7 @@ export function registerDMHandlers(io: Server, socket: Socket) {
         forwarded,
         caption,
         fromUsername,
-      });
+      }) as IDirectMessage;
 
       const payload = {
         _id: saved._id,
@@ -133,9 +131,7 @@ export function registerDMHandlers(io: Server, socket: Socket) {
   );
 
   // ── DM Reactions ───────────────────────────────────────
-  socket.on(
-    "add_dm_reaction",
-    async ({
+  socket.on("add_dm_reaction",async ({
       messageId,
       emoji,
       username,

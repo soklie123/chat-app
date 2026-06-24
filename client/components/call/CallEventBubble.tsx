@@ -1,11 +1,10 @@
 import {
-  MdPhoneMissed,
-  MdCallEnd,
-  MdPhoneDisabled,
-  MdVideocam,
-  MdPhone,
+    MdPhoneMissed,
+    MdPhoneDisabled,
+    MdVideocam,
+    MdPhone,
+    MdMic,
 } from "react-icons/md";
-
 
 import { CallType } from "../../types/chat";
 
@@ -25,69 +24,75 @@ export default function CallEventBubble({
     fromSelf,
     username,
     time,
-} : {
-    callEvent: CallEvent;
-    callType: CallType;
+}: {
+    callEvent:    CallEvent;
+    callType:     CallType;
     callDuration?: number;
-    fromSelf: boolean;
-    username: string;
-    time: string;
+    fromSelf:     boolean;
+    username:     string;
+    time:         string;
 }) {
     const isVideo = callType === "video";
+    const direction = fromSelf ? "Outgoing" : "Incoming";
 
     const config = {
         missed: {
-            Icon: MdPhoneMissed,
-            label: fromSelf ? "No answer" : " Missed call",
-            color: "text-red-500",
-            bg: "bg-red-50 border-red-100",
-            iconColor: "#ef4444",
+            Icon:   MdPhoneMissed,
+            label:  fromSelf ? "No answer" : "Missed call",
+            color:  "#f87171",
+            bg:     "#2a1015",
+            border: "#4a1a20",
+            iconBg: "#3a1820",
         },
         ended: {
-        Icon:  isVideo ? MdVideocam : MdPhone,
-        label: "Call ended",
-        color: "text-green-600",
-        bg:    "bg-green-50 border-green-100",
-        iconColor: "#16a34a",
+            Icon:   isVideo ? MdVideocam : MdPhone,
+            label:  "Call ended",
+            color:  "#4ade80",
+            bg:     "#0e2a1a",
+            border: "#1a4a2a",
+            iconBg: "#1a3a24",
         },
         rejected: {
-        Icon:  MdPhoneDisabled,
-        label: fromSelf ? "Call declined" : "You declined",
-        color: "text-orange-500",
-        bg:    "bg-orange-50 border-orange-100",
-        iconColor: "#f97316",
+            Icon:   MdPhoneDisabled,
+            label:  fromSelf ? "You declined" : "Call declined",
+            color:  "#fb923c",
+            bg:     "#2a1a08",
+            border: "#4a2e10",
+            iconBg: "#3a2210",
         },
     }[callEvent];
 
     const { Icon } = config;
-    return (
-        <div className={`flex ${fromSelf ? "justify-end self-end" : "justify-start"} w-full`}>
-            <div className={`flex items-center gap-2 px-3 py-2 rounded-2xl border text-sm ${config.bg} max-w-[220px]`}>
+    const SubIcon = isVideo ? MdVideocam : MdMic;
 
+    return (
+            <div
+                style={{ background: config.bg, borderColor: config.border }}
+                className="flex items-center gap-2 px-3 py-2 rounded-2xl border max-w-[240px] min-w-[160px]"
+            >
                 {/* Icon */}
-                <div className="flex-shrink-0 w-7 h-7 rounded-full bg-white flex items-center justify-center shadow-sm">
-                    <Icon size={15} color={config.iconColor} />
+                <div
+                    style={{ background: config.iconBg }}
+                    className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center"
+                >
+                    <Icon size={14} color={config.color} />
                 </div>
 
                 <div className="flex-1 min-w-0">
-                <div className={`font-medium text-[12px] ${config.color}`}>
-                    {config.label}
-                </div>
-                <div className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-1">
-                    {isVideo
-                    ? <MdVideocam size={10} className="text-slate-400" />
-                    : <MdPhone size={10} className="text-slate-400" />
-                    }
-                    {isVideo ? "Video" : "Voice"} call
-                    {callDuration ? ` · ${formatDuration(callDuration)}` : ""}
-                </div>
+                    <div style={{ color: config.color }} className="font-medium text-[12px]">
+                        {config.label} • {direction}
+                    </div>
+                    <div className="text-[10px] text-[#8b98a8] mt-0.5 flex items-center gap-1">
+                        <SubIcon size={10} color="#8b98a8" />
+                        {direction} {isVideo ? "Video" : "Voice"} call
+                        {callDuration ? ` · ${formatDuration(callDuration)}` : ""}
+                    </div>
                 </div>
 
                 {/* Time */}
-                <span className="text-[10px] text-slate-400 flex-shrink-0 self-end">
-                {time}
+                <span className="text-[10px] text-[#8b98a8] flex-shrink-0 self-end pl-2">
+                    {time}
                 </span>
             </div>
-        </div>
     );
 }

@@ -1,3 +1,4 @@
+import "dotenv/config";
 import http from "http";
 import { Server } from "socket.io";
 import { env } from "./config/env";
@@ -15,10 +16,7 @@ async function bootstrap() {
     cors: { origin: "*" },
   });
   app.set("io", io);
-  // Verify JWT on the handshake before any "connection" handler runs.
-  // socket.data.username / socket.data.userId are trusted from here on.
   io.use(socketAuthMiddleware);
-
   registerSocketHandlers(io);
 
   server.listen(env.PORT, () => {

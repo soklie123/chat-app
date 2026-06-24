@@ -6,6 +6,7 @@ import { registerRoomHandlers } from "./room.handlers";
 import { registerMessageHandlers } from "./message.handlers";
 import { registerReactionHandlers } from "./reaction.handlers";
 import { registerDMHandlers } from "./dm.handlers";
+import { registerAIHandlers } from "./ai.handlers";
 
 export function registerSocketHandlers(io: Server) {
   io.on("connection", (socket: Socket) => {
@@ -19,6 +20,7 @@ export function registerSocketHandlers(io: Server) {
     registerMessageHandlers(io, socket);
     registerReactionHandlers(io, socket);
     registerDMHandlers(io, socket);
+    registerAIHandlers(io, socket);
 
     // ── Disconnect ─────────────────────────────────────────
     socket.on("disconnect", async () => {

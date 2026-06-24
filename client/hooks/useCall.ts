@@ -21,6 +21,7 @@ export function useCall(
 ) {
     const [callState, setCallState] = useState<CallState>("idle");
     const [callInfo, setCallInfo] = useState<CallInfo | null>(null);
+    const callInfoRef = useRef<CallInfo | null>(null);
     const [localStream, setLocalStream] = useState<MediaStream | null>(null);
     const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
     const [isMuted, setIsMuted] = useState(false);
@@ -97,66 +98,80 @@ export function useCall(
     };
     // toggle speaker 
     const toggleSpeaker = async () => {
-    try {
-        // Find the hidden audio element in the DOM
-        const audioEl = document.querySelector(
-        "audio[autoplay]"
-        ) as HTMLAudioElement & { setSinkId?: (id: string) => Promise<void> };
+        try {
+            // Find the hidden audio element in the DOM
+            const audioEl = document.querySelector(
+            "audio[autoplay]"
+            ) as HTMLAudioElement & { setSinkId?: (id: string) => Promise<void> };
 
-        console.log("Audio element found:", audioEl);
-        console.log("Audio srcObject:", audioEl?.srcObject);
-        console.log("Audio paused:", audioEl?.paused);
-        console.log("Remote stream:", remoteStream);
+            console.log("Audio element found:", audioEl);
+            console.log("Audio srcObject:", audioEl?.srcObject);
+            console.log("Audio paused:", audioEl?.paused);
+            console.log("Remote stream:", remoteStream);
 
-        if (!audioEl) {
-            console.warn("No audio element found");
-            return;
+            if (!audioEl) {
+                console.warn("No audio element found");
+                return;
+            }
+
+            if (!isSpeaker) {
+            // ── Turn speaker ON via Web Audio API ──
+            if (!audioCtxRef.current) {
+                audioCtxRef.current = new AudioContext();
+            }
+            const ctx = audioCtxRef.current;
+            await ctx.resume();
+
+            if (!sourceNodeRef.current) {
+                sourceNodeRef.current = ctx.createMediaElementSource(audioEl);
+            }
+
+            if (!gainNodeRef.current) {
+                gainNodeRef.current = ctx.createGain();
+                gainNodeRef.current.gain.value = 2.0; // boost for speaker
+            }
+
+            sourceNodeRef.current.connect(gainNodeRef.current);
+            gainNodeRef.current.connect(ctx.destination);
+            setIsSpeaker(true);
+            } else {
+            // ── Turn speaker OFF ──
+            gainNodeRef.current?.disconnect();
+            sourceNodeRef.current?.disconnect();
+            gainNodeRef.current  = null;
+            sourceNodeRef.current = null;
+
+            // Close and recreate context so audio goes back to default
+            await audioCtxRef.current?.close();
+            audioCtxRef.current = null;
+
+            // Re-attach stream to audio element directly
+            if (remoteStream) {
+                audioEl.srcObject = remoteStream;
+                await audioEl.play().catch(() => {});
+            }
+
+            setIsSpeaker(false);
+            }
+        } catch (err) {
+            console.warn("Speaker toggle error:", err);
+            setIsSpeaker((s) => !s);
         }
-
-        if (!isSpeaker) {
-        // ── Turn speaker ON via Web Audio API ──
-        if (!audioCtxRef.current) {
-            audioCtxRef.current = new AudioContext();
-        }
-        const ctx = audioCtxRef.current;
-        await ctx.resume();
-
-        if (!sourceNodeRef.current) {
-            sourceNodeRef.current = ctx.createMediaElementSource(audioEl);
-        }
-
-        if (!gainNodeRef.current) {
-            gainNodeRef.current = ctx.createGain();
-            gainNodeRef.current.gain.value = 2.0; // boost for speaker
-        }
-
-        sourceNodeRef.current.connect(gainNodeRef.current);
-        gainNodeRef.current.connect(ctx.destination);
-        setIsSpeaker(true);
-        } else {
-        // ── Turn speaker OFF ──
-        gainNodeRef.current?.disconnect();
-        sourceNodeRef.current?.disconnect();
-        gainNodeRef.current  = null;
-        sourceNodeRef.current = null;
-
-        // Close and recreate context so audio goes back to default
-        await audioCtxRef.current?.close();
-        audioCtxRef.current = null;
-
-        // Re-attach stream to audio element directly
-        if (remoteStream) {
-            audioEl.srcObject = remoteStream;
-            await audioEl.play().catch(() => {});
-        }
-
-        setIsSpeaker(false);
-        }
-    } catch (err) {
-        console.warn("Speaker toggle error:", err);
-        setIsSpeaker((s) => !s);
-    }
     };
+
+    const renegotiate = async () => {
+        if (!pcRef.current || !socket || !callInfo) return;
+        const to = callInfo.from === username ? callInfo.to : callInfo.from;
+
+        const offer = await pcRef.current.createOffer();
+        await pcRef.current.setLocalDescription(offer);
+        socket.emit("call_user_renegotiate", { to, offer });
+    };
+
+    // ── Keep callInfoRef always current ───────────────────────
+    useEffect(() => {
+        callInfoRef.current = callInfo;
+    }, [callInfo]); // ← separate effect, updates on every callInfo change
 
     // ── Socket listeners ───────────────────────────────────
     useEffect(() => {
@@ -219,27 +234,28 @@ export function useCall(
 
         // Remote ended call
         socket.on("call_ended", () => {
+            const info = callInfoRef.current; 
             const duration = callStartRef.current
                 ? Math.floor((Date.now() - callStartRef.current) / 1000)
                 : 0;
             
             onCallEvent?.({
                 type:     "ended",
-                callType: callInfo?.type ?? "voice",
-                with:     callInfo?.from === username ? callInfo?.to ?? "" : callInfo?.from ?? "",
+                callType: info?.type ?? "voice",
+                with:     info?.from === username ? info?.to ?? "" : info?.from ?? "",
                 duration,
             });
             callStartRef.current = null;
             cleanup();
         });
-            
-        
+             
         // Remote rejected call
         socket.on("call_rejected", () => {
+            const info = callInfoRef.current;
             onCallEvent?.({
                 type:     "rejected",
-                callType: callInfo?.type ?? "voice",
-                with:     callInfo?.to ?? "",
+                callType: info?.type ?? "voice",
+                with:     info?.to ?? "",
                 duration: 0,
             });
             cleanup();
@@ -250,14 +266,31 @@ export function useCall(
         socket.on("call_failed", ({ reason } : {
             reason: string;
         }) => {
+            const info = callInfoRef.current;
             onCallEvent?.({
                 type: "missed",
-                callType: callInfo?.type ?? "voice",
-                with: callInfo?.to ?? "",
+                callType: info?.type ?? "voice",
+                with: info?.to ?? "",
                 duration: 0,
             });
             cleanup();
             alert(`"Call failed: ${reason}"`);
+        });
+
+        socket.on("call_renegotiate", async ({ offer }) => {
+            if (!pcRef.current || !socket || !callInfo) return;
+            const info = callInfoRef.current; 
+            const to = info?.from === username ? info?.to : info?.from;
+
+            await pcRef.current.setRemoteDescription(offer);
+            const answer = await pcRef.current.createAnswer();
+            await pcRef.current.setLocalDescription(answer);
+            socket.emit("call_renegotiate_answer", { to, answer });
+        });
+
+        socket.on("call_renegotiate_answer", async ({ answer }) => {
+            if (!pcRef.current) return;
+            await pcRef.current.setRemoteDescription(answer);
         });
 
         return () => {
@@ -267,6 +300,8 @@ export function useCall(
             socket.off("call_ended");
             socket.off("call_rejected");
             socket.off("call_failed");
+            socket.off("call_renegotiate");
+            socket.off("call_renegotiate_answer");
         };
     }, [socket, username]);
 
@@ -399,12 +434,10 @@ export function useCall(
         if (!pcRef.current || !localStream) return;
 
         if (isCamOff) {
-            // Turn the camera ON - get video tracks
             try {
                 const videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
                 const videoTrack = videoStream.getVideoTracks()[0];
 
-                // Replace or add video track in peer connection
                 const sender = pcRef.current.getSenders().find((s) => s.track?.kind === "video");
                 if (sender) {
                     await sender.replaceTrack(videoTrack);
@@ -412,22 +445,23 @@ export function useCall(
                     pcRef.current.addTrack(videoTrack, localStream);
                 }
 
-                // Add local stream so preview works
                 localStream.addTrack(videoTrack);
                 setLocalStream(new MediaStream(localStream.getTracks()));
                 setIsCamOff(false);
                 setIsSharing(false);
 
-                // Stop screen share if active
                 if (screenTrackRef.current) {
                     screenTrackRef.current.stop();
                     screenTrackRef.current = null;
                 }
+
+                // ← Renegotiate so remote receives the new video track
+                await renegotiate();
+
             } catch (err) {
                 alert("Could not access camera.");
             }
         } else {
-            // Turn camera OFF
             localStream.getVideoTracks().forEach((t) => {
                 t.stop();
                 localStream.removeTrack(t);
@@ -436,6 +470,9 @@ export function useCall(
             if (sender) await sender.replaceTrack(null);
             setLocalStream(new MediaStream(localStream.getTracks()));
             setIsCamOff(true);
+
+            // ← Renegotiate so remote knows video is gone
+            await renegotiate();
         }
     };
     // ── Screen share ───────────────────────────────────────
@@ -459,6 +496,7 @@ export function useCall(
                     localStream.getVideoTracks().forEach((t) => localStream.removeTrack(t));
                     localStream.addTrack(camTrack);
                     setLocalStream(new MediaStream(localStream.getTracks()));
+                    await renegotiate(); // ← tell remote: back to camera
                 } catch {}
             } else {
                 if (sender) await sender.replaceTrack(null);
@@ -467,6 +505,7 @@ export function useCall(
                     localStream.removeTrack(t);
                 });
                 setLocalStream(new MediaStream(localStream.getTracks()));
+                await renegotiate(); // ← tell remote: video stopped
             }
 
             setIsSharing(false);
@@ -480,7 +519,6 @@ export function useCall(
                 const screenTrack = screenStream.getVideoTracks()[0];
                 screenTrackRef.current = screenTrack;
 
-                // Replace video sender with screen track
                 const sender = pcRef.current.getSenders().find((s) => s.track?.kind === "video");
                 if (sender) {
                     await sender.replaceTrack(screenTrack);
@@ -488,7 +526,6 @@ export function useCall(
                     pcRef.current.addTrack(screenTrack, localStream);
                 }
 
-                // Replace in local stream for preview
                 localStream.getVideoTracks().forEach((t) => {
                     t.stop();
                     localStream.removeTrack(t);
@@ -496,29 +533,34 @@ export function useCall(
                 localStream.addTrack(screenTrack);
                 setLocalStream(new MediaStream(localStream.getTracks()));
                 setIsSharing(true);
-                setIsCamOff(true); // Camera is effectively off when sharing
-                
-                // Auto stop when user clicks browser's stop sharing
-                screenTrack.onended = () => {
+                setIsCamOff(true);
+
+                await renegotiate(); // ← tell remote: screen share started
+
+                // Auto stop when user clicks browser's "Stop sharing"
+                screenTrack.onended = async () => {
                     setIsSharing(false);
                     setIsCamOff(true);
                     screenTrackRef.current = null;
+
+                    // Also remove the track from the sender
+                    const s = pcRef.current?.getSenders().find((s) => s.track?.kind === "video");
+                    if (s) await s.replaceTrack(null);
+                    await renegotiate(); // ← tell remote: screen share stopped by browser
                 };
             } catch (err: any) {
-                // User cancelled the dialog - not real error, ignore silently
                 if (
-                    err?.name === "NotAllowedError" || 
+                    err?.name === "NotAllowedError" ||
                     err?.message?.includes("Permission denied") ||
-                    err?.message.includes("cancelled")
+                    err?.message?.includes("cancelled")
                 ) {
-                    return; // user just cancelled, do nothing
+                    return;
                 }
-                // Real error - 
                 console.warn("Screen share cancelled or fail: ", err);
                 alert("Screen sharing failed. Please try again.");
             }
         }
-    }
+    };
 
     return {
         callState,

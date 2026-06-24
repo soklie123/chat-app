@@ -6,11 +6,12 @@ import { useChat } from "../hooks/useChat";
 import { useNotifications } from "../hooks/useNotifications";
 import { useUnseenNotifications } from "../hooks/useUnseenNotifications";
 import NotificationBanner, { useToasts } from "../components/shared/NotificationBanner";
-import UsernameGate from "../components/shared/UsernameGate";
+import AuthGate from "../components/auth/AuthGate";
 import Sidebar from "../components/layout/Sidebar";
 import DMPanel from "../components/dm/DMPanel";
 import RoomView from "../components/chat/RoomView";
 import CallScreen from "../components/call/CallScreen";
+import { AuthUser } from "../lib/api";
 import { RoomSummary } from "../hooks/useChat";
 
 type ReplyDraft = { _id: string; username: string; text: string } | null;
@@ -29,8 +30,12 @@ type AudioDraft = {
 export default function Home() {
   const [username, setUsername] = useState("");
 
+  const handleAuthed = (user: AuthUser, _token: string) => {
+    setUsername(user.username);
+  };
+
   const {
-    socket, connected, onlineUsers, allUsers, rooms, createRoom, logout,
+    socket, connected, onlineUsers, allUsers, rooms, createRoom, logout,userProfiles
   } = useChat(username);
 
   const {
@@ -42,21 +47,26 @@ export default function Home() {
     currentRoom,
     roomMessages,
     typingUser: roomTyping,
+    roomUnread,           // ← destructure roomUnread here
     openRoom,
     closeRoom,
     sendRoomMessage,
     emitTyping: emitRoomTyping,
     markRoomSeen,
     reactToRoomMessage,
-    leaveGroup,      // ← destructure here
-    deleteGroup,     // ← destructure here
-    deleteRoomChat,  // ← destructure here
+    leaveGroup,
+    deleteGroup,
+    deleteRoomChat,
   } = useRoom(socket, username);
 
   const activeDMRef = useRef<string | null>(null);
   useEffect(() => {
     activeDMRef.current = activeDM;
   }, [activeDM]);
+
+  const { permission, notifyMessage, notifyDM, notifyRoom, notifyCall, notifyInvite } =
+    useNotifications(username);
+  const { toasts, addToast, removeToast } = useToasts();
 
   const {
     callState, callInfo, localStream, remoteStream,
@@ -69,6 +79,17 @@ export default function Home() {
     // addCallEventMessage(event.type, event.callType, withUser, event.duration, event.type !== "missed");
     if (!activeDMRef.current) openDM(withUser);
   });
+
+  // ── Incoming call notification (sound + toast), independent of DM/room message flow ──
+  const lastNotifiedCallId = useRef<string | null>(null);
+  useEffect(() => {
+    if (callState !== "receiving" || !callInfo) return;
+    if (lastNotifiedCallId.current === callInfo.callId) return;
+    lastNotifiedCallId.current = callInfo.callId;
+
+    notifyCall(callInfo.from, callInfo.type);
+    addToast(callInfo.from, callInfo.type === "video" ? "Incoming video call" : "Incoming voice call", true, undefined, "call");
+  }, [callState, callInfo, notifyCall, addToast]);
 
   const [dmReplyTo, setDMReplyTo] = useState<ReplyDraft>(null);
   const [roomReplyTo, setRoomReplyTo] = useState<ReplyDraft>(null);
@@ -116,24 +137,35 @@ export default function Home() {
     setForwardData(null);
   };
 
-  const { notifyDM } = useNotifications(username);
-  const { toasts, addToast, removeToast } = useToasts();
-
+  // ── Watches incoming room/DM/conversation activity and fires toast + sound
+  //    only when the relevant chat isn't the one currently open & focused ──
   useUnseenNotifications({
     messages: roomMessages,
     dmMessages,
     conversations,
     activeDM,
     currentRoom: currentRoom ?? "",
-    notifyMessage: () => {},
+    notifyMessage,
+    notifyRoom,
     notifyDM,
     addToast,
   });
 
-  const roomsForRoomView = rooms.map((room) => ({
-    ...room,
-    createdBy: "",
-  }));
+  // ── Group invite notification ──
+  useEffect(() => {
+    if (!socket) return;
+
+    const onInvited = ({ groupName }: { groupName: string }) => {
+      notifyInvite(groupName);
+      addToast(groupName, "You were added to the group", false, groupName, "room");
+    };
+
+    socket.on("invited_to_group", onInvited);
+
+    return () => {
+      socket.off("invited_to_group", onInvited);
+    };
+  }, [socket, notifyInvite, addToast]);
 
   const handleCreateGroup = (name: string, members: string[]) => {
     const roomId = name.trim().toLowerCase().replace(/\s+/g, "-");
@@ -190,7 +222,7 @@ export default function Home() {
     });
   };
 
-  if (!username) return <UsernameGate onJoin={setUsername} />;
+  if (!username) return <AuthGate onAuthed={handleAuthed} />;
 
   return (
     <>
@@ -232,6 +264,8 @@ export default function Home() {
           onOpenDM={handleOpenDM}
           onOpenRoom={handleOpenRoom}
           onCreateGroup={handleCreateGroup}
+          roomUnread={roomUnread}  
+          userProfiles={userProfiles}
         />
 
         <div className="flex-1 flex flex-col overflow-hidden">

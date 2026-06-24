@@ -1,17 +1,8 @@
 import { useEffect, useRef } from "react";
 import { ChatMessage, DMMessage, DMConversation } from "../types/chat";
 
-/**
- * Watches messages / DM messages / conversation unread counts and fires
- * toast + system notifications exactly once per new item.
- *
- * NOTE: the previous implementation mutated state directly in the render
- * body ("if (messages.length > prevLen) { ... setPrevLen(...) }"). That
- * runs on *every* render (including ones caused by unrelated state
- * changes elsewhere in Home), and can double-fire or read stale closures.
- * Moving the same logic into useEffect keyed on the actual dependency
- * makes it run exactly once per real update, in the correct order.
- */
+type ToastKind = "dm" | "room" | "call";
+
 export function useUnseenNotifications({
   messages,
   dmMessages,
@@ -19,6 +10,7 @@ export function useUnseenNotifications({
   activeDM,
   currentRoom,
   notifyMessage,
+  notifyRoom,
   notifyDM,
   addToast,
 }: {
@@ -27,52 +19,98 @@ export function useUnseenNotifications({
   conversations: DMConversation[];
   activeDM: string | null;
   currentRoom: string;
-  notifyMessage: (username: string, text: string) => void;
-  notifyDM: (username: string, text: string) => void;
-  addToast: (
-    username: string,
-    text: string,
-    isDM: boolean,
-    room?: string
-  ) => void;
+  notifyMessage?: (from: string, text: string, isDM?: boolean) => void;
+  notifyRoom?: (roomName: string, from: string, text: string) => void;
+  notifyDM?: (from: string, text: string) => void;
+  addToast: (from: string, text: string, isDM: boolean, room?: string, kind?: ToastKind) => void;
 }) {
-  const prevMsgLen = useRef(0);
-  const prevDMLen = useRef(0);
-  const prevUnread = useRef(0);
+  // Track last-seen message id per surface so we only notify on genuinely new messages
+  const lastRoomMsgId = useRef<string | undefined>(undefined);
+  const lastDMMsgId = useRef<string | undefined>(undefined);
+  const isFocusedRef = useRef(true);
 
-  // Room messages
   useEffect(() => {
-    if (messages.length > prevMsgLen.current) {
-      const newMsg = messages[messages.length - 1];
-      if (newMsg && !newMsg.fromSelf && activeDM) {
-        notifyMessage(newMsg.username, newMsg.text);
-        addToast(newMsg.username, newMsg.text, false, currentRoom);
+    const onFocus = () => { isFocusedRef.current = true; };
+    const onBlur = () => { isFocusedRef.current = false; };
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("blur", onBlur);
+    };
+  }, []);
+
+  // ── Room messages (currently open room only — this is what `messages` holds) ──
+  useEffect(() => {
+    if (messages.length === 0) return;
+    const last = messages[messages.length - 1];
+    if (!last._id || last._id === lastRoomMsgId.current) return;
+    lastRoomMsgId.current = last._id;
+
+    if (last.fromSelf) return;
+
+    const chatIsOpenAndFocused = isFocusedRef.current && !!currentRoom;
+    const text = last.text || (last.fileUrl ? "📎 File" : last.audioUrl ? "🎤 Voice message" : "");
+
+    if (chatIsOpenAndFocused) return; // looking right at it — stay quiet
+
+    notifyRoom?.(currentRoom, last.username, text);
+    addToast(last.username, text, false, currentRoom, "room");
+  }, [messages, currentRoom, notifyRoom, addToast]);
+
+  // ── DM messages (currently open DM only — this is what `dmMessages` holds) ──
+  useEffect(() => {
+    if (dmMessages.length === 0) return;
+    const last = dmMessages[dmMessages.length - 1];
+    if (!last._id || last._id === lastDMMsgId.current) return;
+    lastDMMsgId.current = last._id;
+
+    if (last.fromSelf || last.callEvent) return;
+
+    const chatIsOpenAndFocused = isFocusedRef.current && !!activeDM;
+    const text = last.text || (last.fileUrl ? "📎 File" : last.audioUrl ? "🎤 Voice message" : "");
+
+    if (chatIsOpenAndFocused) return;
+
+    notifyDM?.(last.username, text);
+    addToast(last.username, text, true, undefined, "dm");
+  }, [dmMessages, activeDM, notifyDM, addToast]);
+
+  // ── Background conversations (messages arriving for chats NOT currently open) ──
+  // `conversations` updates its `unread`/`lastMessage` even when that chat isn't active;
+  // this catches DMs and groups you're not currently looking at at all.
+  const prevConvSnapshot = useRef<Record<string, string>>({});
+
+  useEffect(() => {
+    const next: Record<string, string> = {};
+
+    for (const conv of conversations) {
+      next[conv.username] = `${conv.lastMessage}|${conv.time}`;
+      const prevSig = prevConvSnapshot.current[conv.username];
+      const sig = next[conv.username];
+
+      const isCurrentlyOpen = conv.isGroup
+        ? conv.username === currentRoom
+        : conv.username === activeDM;
+
+      // Only fire if this conversation actually changed, isn't the one we're already in,
+      // and we have a previous snapshot to compare against (skip the very first render).
+      if (
+        prevSig !== undefined &&
+        prevSig !== sig &&
+        !(isCurrentlyOpen && isFocusedRef.current) &&
+        conv.unread > 0
+      ) {
+        if (conv.isGroup) {
+          notifyRoom?.(conv.username, conv.username, conv.lastMessage);
+          addToast(conv.username, conv.lastMessage, false, conv.username, "room");
+        } else {
+          notifyDM?.(conv.username, conv.lastMessage);
+          addToast(conv.username, conv.lastMessage, true, undefined, "dm");
+        }
       }
     }
-    prevMsgLen.current = messages.length;
-  }, [messages, activeDM, currentRoom, notifyMessage, addToast]);
 
-  // DM messages
-  useEffect(() => {
-    if (dmMessages.length > prevDMLen.current) {
-      const newDM = dmMessages[dmMessages.length - 1];
-      if (newDM && !newDM.fromSelf) {
-        notifyDM(newDM.username, newDM.text);
-      }
-    }
-    prevDMLen.current = dmMessages.length;
-  }, [dmMessages, notifyDM]);
-
-  // Conversation unread totals
-  useEffect(() => {
-    const totalUnread = conversations.reduce((sum, c) => sum + c.unread, 0);
-    if (totalUnread > prevUnread.current) {
-      const newConv = conversations.find((c) => c.unread > 0);
-      if (newConv) {
-        notifyDM(newConv.username, newConv.lastMessage);
-        addToast(newConv.username, newConv.lastMessage, true);
-      }
-    }
-    prevUnread.current = totalUnread;
-  }, [conversations, notifyDM, addToast]);
+    prevConvSnapshot.current = next;
+  }, [conversations, activeDM, currentRoom, notifyRoom, notifyDM, addToast]);
 }

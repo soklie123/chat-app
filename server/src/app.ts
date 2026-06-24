@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import { uploadRouter } from "./routes/upload.routes";
+import { authRouter } from "./routes/auth.routes";
 
 export function createApp() {
   const app = express();
@@ -12,6 +13,7 @@ export function createApp() {
     res.send("Chat server is running");
   });
 
+  app.use("/auth", authRouter);
   app.use("/upload", uploadRouter);
 
   return app;

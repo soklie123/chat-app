@@ -25,31 +25,31 @@ async function sendSystemMessage(io: Server, roomId: string, text: string) {
 
 export function registerRoomHandlers(io: Server, socket: Socket) {
 
-  // ── Register ───────────────────────────────────────────
-  socket.on("register_user", async (username: string) => {
-    if (!username) return;
-    onlineUsers.set(socket.id, username);
-    await User.findOneAndUpdate(
-      { username },
-      { username, lastSeen: new Date() },
-      { upsert: true, returnDocument: "after" }
+ socket.on("register_user", async () => {
+  // Use the JWT-verified username, not a client-supplied string
+  const username = socket.data.username as string | undefined;
+  if (!username) return;
+
+  onlineUsers.set(socket.id, username);
+  await User.findOneAndUpdate(
+    { username },
+    { username, lastSeen: new Date() },
+    { upsert: true, returnDocument: "after" }
+  );
+
+  for (const { name } of SYSTEM_ROOMS) {
+    await Room.findOneAndUpdate(
+      { name },
+      { $addToSet: { members: username } }
     );
+    if (!rooms.has(name)) rooms.set(name, new Set());
+  }
 
-    for (const { name } of SYSTEM_ROOMS) {
-      await Room.findOneAndUpdate(
-        { name },
-        { $addToSet: { members: username } }
-      );
-      if (!rooms.has(name)) rooms.set(name, new Set());
-    }
-
-    io.emit("online_users", Array.from(onlineUsers.values()));
-    const allUsers = await User.find({}, "username").lean();
-    socket.emit("all_users", allUsers.map((u) => u.username));
-
-    await broadcastRoomList(io);
-  });
-
+  io.emit("online_users", Array.from(onlineUsers.values()));
+  const allUsers = await User.find({}, "username").lean();
+  io.emit("all_users", allUsers.map((u) => u.username));
+  await broadcastRoomList(io);
+});
   socket.on("unregister_user", async () => {
     const username = onlineUsers.get(socket.id);
     if (username) {

@@ -3,6 +3,8 @@ export interface IDirectMessage extends Document {
     text: string;
     from: string;
     to: string;
+    caption?: string; 
+    fromUsername?: string;
 
     reactions?: {
       emoji: string;
@@ -21,6 +23,14 @@ export interface IDirectMessage extends Document {
     replyTo?: { _id: string; username: string; text: string };
     forwarded?: boolean;
 
+    // ── Call events ──────────────────────────────
+    type?: "text" | "call" | "screen_share";
+    event?: "started" | "stopped";
+    callType?:  "voice" | "video";
+    callEvent?: "ended" | "missed" | "rejected";
+    duration?:  number;
+    // ───────────────────────────────────────────
+
     createdAt: Date;
 }
 
@@ -34,6 +44,8 @@ const DirectMessageSchema = new Schema<IDirectMessage>({
     text: { type: String, default: "" },
     from: { type: String, required: true },
     to: { type: String, required: true },
+    caption: { type: String },
+    fromUsername: { type: String },
 
     reactions: { type: [reactionSchema], default: [] },
 
@@ -51,6 +63,34 @@ const DirectMessageSchema = new Schema<IDirectMessage>({
         text: { type: String }
     },
     forwarded: { type: Boolean, default: false },
+
+     // ── Call events ──────────────────────────────
+    
+    type: {
+        type: String,
+        enum: ["text", "call", "screen_share"],
+        default: "text",
+    },
+ // "text" | "call"
+        
+    event: {
+        type: String,
+        enum: ["started", "stopped"],
+    },
+
+    callType: {
+        type: String,
+        enum: ["voice", "video"],
+    },
+
+    callEvent: {
+        type: String,
+        enum: ["ended", "missed", "rejected"],
+    },
+                   // "ended" | "missed" | "rejected"
+    duration:  { type: Number, default: 0},                   // seconds
+    // ─────────────────────────────────────────────
+
 
 }, { timestamps: true});
 

@@ -193,8 +193,16 @@ export default function DMPanel({
               const id = msg._id ?? String(i);
               if (msg.callEvent) {
                 return (
-                  <CallEventBubble key={id} callEvent={msg.callEvent} callType={msg.callType ?? "voice"}
-                    callDuration={msg.callDuration} fromSelf={msg.fromSelf} username={msg.username} time={msg.time} />
+                  <div key={msg._id ?? i} className={`flex w-full ${msg.fromSelf ? "justify-end" : "justify-start"}`}>
+                    <CallEventBubble
+                        callEvent={msg.callEvent}
+                        callType={msg.callType ?? "voice"}
+                        callDuration={msg.callDuration}
+                        fromSelf={msg.fromSelf}
+                        username={msg.username}
+                        time={msg.time}
+                    />
+                  </div>
                 );
               }
               return msg.fromSelf ? (

@@ -35,7 +35,7 @@ export default function Home() {
 
   const {
     activeDM, dmMessages, conversations, dmTyping,
-    openDM, closeDM, sendDM, emitDMTyping, markDMSeen, addCallEventMessage,
+    openDM, closeDM, sendDM, emitDMTyping, markDMSeen,
   } = useDM(socket, username);
 
   const {
@@ -66,7 +66,7 @@ export default function Home() {
   } = useCall(socket, username, (event) => {
     const withUser = event.with || activeDMRef.current || "";
     if (!withUser) return;
-    addCallEventMessage(event.type, event.callType, withUser, event.duration, event.type !== "missed");
+    // addCallEventMessage(event.type, event.callType, withUser, event.duration, event.type !== "missed");
     if (!activeDMRef.current) openDM(withUser);
   });
 
@@ -255,10 +255,9 @@ export default function Home() {
               onSend={handleSend}
               onTyping={emitRoomTyping}
               onForward={handleForward}
-              onLeaveGroup={leaveGroup}     
-              onDeleteGroup={deleteGroup}  
-              onDeleteChat={deleteRoomChat} 
-            />
+              onLeaveGroup={leaveGroup}
+              onDeleteGroup={deleteGroup}
+              onDeleteChat={deleteRoomChat} allUsers={[]}            />
           ) : activeDM ? (
             <DMPanel
               currentUsername={username}

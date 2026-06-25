@@ -193,7 +193,6 @@ export default function AudioPlayer({
       <div className="flex-1 flex flex-col gap-1">
         <canvas
           ref={canvasRef}
-          height={32}
           className="w-full"
           style={{ cursor: "pointer" }}
           onClick={(e) => {

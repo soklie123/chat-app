@@ -93,12 +93,19 @@ export default function DMList({
 
               {/* Bottom row: last message + unread badge */}
               <div className="flex items-center justify-between gap-1.5">
-                <div
-                  className={`
-                    text-[13px] truncate flex-1
-                    ${isActive ? "text-white/65" : "text-[#8b98a5]"}
-                  `}
+                <div className={`text-[13px] truncate flex-1 flex items-center gap-1
+                  ${isActive ? "text-white/65" : "text-[#8b98a5]"}`}
                 >
+                  {conv.lastMessage === "🎙 Voice message" && (
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+                      className="shrink-0">
+                      <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                      <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                      <line x1="12" y1="19" x2="12" y2="23"/>
+                      <line x1="8" y1="23" x2="16" y2="23"/>
+                    </svg>
+                  )}
                   {conv.lastMessage || "…"}
                 </div>
                 {conv.unread > 0 && !isActive && (

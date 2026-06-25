@@ -190,7 +190,14 @@ export default function MessageList({
                       {msg.replyTo && <ReplyPreview replyTo={msg.replyTo} fromSelf={true} />}
                       {msg.text && <span className="whitespace-pre-wrap break-words block">{msg.text}</span>}
                       {msg.caption && <div className="text-[12px] text-[#d1d5db] mt-1 italic">{msg.caption}</div>}
-                      {msg.audioUrl && <AudioPlayer audioUrl={msg.audioUrl} audioDuration={msg.audioDuration} fromSelf={true} />}
+                      {msg.audioUrl &&
+                        <AudioPlayer 
+                          audioUrl={msg.audioUrl} 
+                          audioDuration={typeof msg.audioDuration === "string"
+                            ? parseFloat(msg.audioDuration)
+                            : (msg.audioDuration ?? 0)} 
+                          fromSelf={true} 
+                        />}
                       {msg.fileUrl && <FilePreview fileUrl={msg.fileUrl} fileName={msg.fileName} fileType={msg.fileType} isImage={msg.isImage} />}
                       {msg.reactions && msg.reactions.length > 0 && (
                         <ReactionBubbles
@@ -245,7 +252,15 @@ export default function MessageList({
                       {msg.replyTo && <ReplyPreview replyTo={msg.replyTo} fromSelf={false} />}
                       {msg.text && <span className="whitespace-pre-wrap break-words block">{msg.text}</span>}
                       {msg.caption && <div className="text-[12px] text-[#9ca3af] mt-1 italic">{msg.caption}</div>}
-                      {msg.audioUrl && <AudioPlayer audioUrl={msg.audioUrl} audioDuration={msg.audioDuration} fromSelf={false} />}
+                      {msg.audioUrl && 
+                        <AudioPlayer 
+                          audioUrl={msg.audioUrl} 
+                          audioDuration={typeof msg.audioDuration === "string"
+                            ? parseFloat(msg.audioDuration)
+                            : (msg.audioDuration ?? 0)} 
+                          fromSelf={false} 
+                        />
+                      }
                       {msg.fileUrl && <FilePreview fileUrl={msg.fileUrl} fileName={msg.fileName} fileType={msg.fileType} isImage={msg.isImage} />}
                       {msg.reactions && msg.reactions.length > 0 && (
                         <ReactionBubbles

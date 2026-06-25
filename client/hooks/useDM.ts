@@ -215,27 +215,36 @@ export function useDM(socket: Socket | null, username: string) {
       tempId?: string;
       from: string;
       time: string;
+      text?: string;
       forwarded?: boolean;
       caption?: string;
       fromUsername?: string;
       replyTo?: { _id: string; username: string; text: string };
       audioUrl?: string;
       audioDuration?: number;
+      fileUrl?: string;
+      fileName?: string;
+      fileType?: string;
+      isImage?: boolean;
     }) => {
-      // Normal message only — call messages now come through dm_receive
       setDmMessages((prev) =>
         prev.map((msg) =>
           msg._id === data.tempId
             ? {
-                ...msg,
+                ...msg,          // keep everything from optimistic message
                 _id:           data._id,
                 status:        "sent" as MessageStatus,
-                forwarded:     data.forwarded     ?? msg.forwarded,
-                replyTo:       data.replyTo       ?? msg.replyTo,
-                audioUrl:      data.audioUrl      ?? msg.audioUrl,
-                audioDuration: data.audioDuration ?? msg.audioDuration,
-                caption:       data.caption       ?? msg.caption,
-                fromUsername:  data.fromUsername  ?? msg.fromUsername,
+                // only override if server sent a value
+                ...(data.audioUrl      && { audioUrl:      data.audioUrl }),
+                ...(data.audioDuration && { audioDuration: data.audioDuration }),
+                ...(data.fileUrl       && { fileUrl:        data.fileUrl }),
+                ...(data.fileName      && { fileName:       data.fileName }),
+                ...(data.fileType      && { fileType:       data.fileType }),
+                ...(data.isImage  !== undefined && { isImage: data.isImage }),
+                ...(data.forwarded    !== undefined && { forwarded:    data.forwarded }),
+                ...(data.replyTo      && { replyTo:      data.replyTo }),
+                ...(data.caption      && { caption:      data.caption }),
+                ...(data.fromUsername && { fromUsername: data.fromUsername }),
               }
             : msg
         )

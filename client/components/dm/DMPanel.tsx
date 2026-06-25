@@ -10,9 +10,12 @@ import MessageStatusIcon from "../chat/MessageStatus";
 import ReplyPreview from "../chat/Replypreview";
 import ReplyBar from "../chat/ReplyBar";
 import { MessageBubble } from "../chat/MessageBubble";
+<<<<<<< HEAD
 import useVoiceRecorder from "@/hooks/useVoiceRecorder";
 import AudioPlayer from "../shared/AudioPlayer";
 import InputBar from "../shared/InputBar";
+=======
+>>>>>>> 0378d05a57b015d813c4c194c226eb231a3eccbc
 
 const UPLOAD_URL = "http://localhost:4000/upload";
 
@@ -27,12 +30,16 @@ export default function DMPanel({
   messages: DMMessage[];
   dmTyping: string | null;
   isOnline: boolean;
+<<<<<<< HEAD
   onSend: (
     text: string, 
     file?: { fileUrl: string; fileName: string; fileType: string; isImage: boolean }, 
     audio?: { audioUrl: string; audioDuration: string }, 
     replyTo?: { _id: string; username: string; text: string }
   ) => void;
+=======
+  onSend: (text: string, file?: { fileUrl: string; fileName: string; fileType: string; isImage: boolean }, audio?: { audioUrl: string; audioDuration: string }, replyTo?: { _id: string; username: string; text: string }) => void;
+>>>>>>> 0378d05a57b015d813c4c194c226eb231a3eccbc
   onTyping: (value: string) => void;
   onClose: () => void;
   onReact?: (messageId: string, emoji: string) => void;
@@ -50,15 +57,26 @@ export default function DMPanel({
   onCancelForward?: () => void;
   onForwardSend?: (text: string, fromUsername: string, caption: string) => void;
 }) {
+<<<<<<< HEAD
   const [uploading, setUploading] = useState(false);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [showJumpBtn, setShowJumpBtn] = useState(false);
+=======
+  const [message, setMessage] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [showJumpBtn, setShowJumpBtn] = useState(false);
+  const [preview, setPreview] = useState<{
+    fileUrl: string; fileName: string; fileType: string; isImage: boolean;
+  } | null>(null);
+>>>>>>> 0378d05a57b015d813c4c194c226eb231a3eccbc
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const isNearBottomRef = useRef(true);
 
+<<<<<<< HEAD
   //  recorded voice in dm
   const [voiceUploading, setVoiceUploading] = useState(false);
 
@@ -67,6 +85,8 @@ export default function DMPanel({
   const timerRef = useRef<number | null>(null);
   const waveCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
+=======
+>>>>>>> 0378d05a57b015d813c4c194c226eb231a3eccbc
   // ── Scroll position tracker — MUST be inside useEffect so `el` exists ──
   useEffect(() => {
     const el = scrollRef.current;
@@ -105,6 +125,7 @@ export default function DMPanel({
     if (unseenIds.length > 0) onSeen?.(unseenIds);
   }, [messages]);
 
+<<<<<<< HEAD
   useEffect(() => {
     return () => {
       if (timerRef.current) window.clearInterval(timerRef.current);
@@ -146,6 +167,8 @@ export default function DMPanel({
     cancel(); // hook suppresses onRecorded callback
   };
 
+=======
+>>>>>>> 0378d05a57b015d813c4c194c226eb231a3eccbc
   const scrollToBottom = () => {
     const el = scrollRef.current;
     if (!el) return;
@@ -153,6 +176,52 @@ export default function DMPanel({
     setShowJumpBtn(false);
   };
 
+<<<<<<< HEAD
+=======
+  const handleSend = () => {
+    if (forwardMsg && onForwardSend) {
+      onForwardSend(forwardMsg.text, forwardMsg.fromUsername, message.trim());
+      setTimeout(scrollToBottom, 50);
+      setMessage("");
+      setPreview(null);
+      return;
+    }
+
+    if (!message.trim() && !preview) return;
+
+    onSend(message, preview ?? undefined, undefined, replyTo);
+    setTimeout(scrollToBottom, 50);
+
+    onCancelReply?.();
+    setMessage("");
+    setPreview(null);
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await axios.post(UPLOAD_URL, formData);
+      setPreview({
+        fileUrl: res.data.url,
+        fileName: res.data.originalName,
+        fileType: res.data.mimetype,
+        isImage: res.data.isImage,
+      });
+    } catch {
+      alert("Upload failed.");
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const hasContent = !!(message.trim() || preview || forwardMsg);
+
+>>>>>>> 0378d05a57b015d813c4c194c226eb231a3eccbc
   return (
     <div className="h-full flex flex-col overflow-hidden bg-[#0e1621]">
 
@@ -239,6 +308,7 @@ export default function DMPanel({
                         {msg.replyTo && <ReplyPreview replyTo={msg.replyTo} fromSelf={true} />}
                         {msg.text && <span className="whitespace-pre-wrap break-words block">{msg.text}</span>}
                         {msg.caption && <div className="text-[12px] text-[#d1d5db] mt-1 italic">{msg.caption}</div>}
+<<<<<<< HEAD
                         {msg.audioUrl && (
                           <AudioPlayer
                             audioUrl={msg.audioUrl}
@@ -248,6 +318,8 @@ export default function DMPanel({
                             fromSelf={false}
                           />
                         )}
+=======
+>>>>>>> 0378d05a57b015d813c4c194c226eb231a3eccbc
                         {msg.fileUrl && <FilePreview fileUrl={msg.fileUrl} fileName={msg.fileName} fileType={msg.fileType} isImage={msg.isImage} />}
                         {msg.reactions && msg.reactions.length > 0 && (
                           <div className="flex flex-wrap gap-1.5 mt-2">
@@ -295,6 +367,7 @@ export default function DMPanel({
                         {msg.replyTo && <ReplyPreview replyTo={msg.replyTo} fromSelf={false} />}
                         {msg.text && <span className="whitespace-pre-wrap break-words block">{msg.text}</span>}
                         {msg.caption && <div className="text-[12px] text-[#9ca3af] mt-1 italic">{msg.caption}</div>}
+<<<<<<< HEAD
                         {msg.audioUrl && (
                           <AudioPlayer
                             audioUrl={msg.audioUrl}
@@ -304,6 +377,8 @@ export default function DMPanel({
                             fromSelf={false}
                           />
                         )}
+=======
+>>>>>>> 0378d05a57b015d813c4c194c226eb231a3eccbc
                         {msg.fileUrl && <FilePreview fileUrl={msg.fileUrl} fileName={msg.fileName} fileType={msg.fileType} isImage={msg.isImage} />}
                         {msg.reactions && msg.reactions.length > 0 && (
                           <div className="flex flex-wrap gap-1.5 mt-2">
@@ -356,6 +431,20 @@ export default function DMPanel({
 
       {/* ── Bottom bar ── */}
       <div className="bg-[#17212b] border-t border-[#0d1821] shrink-0">
+<<<<<<< HEAD
+=======
+        {preview && (
+          <div className="flex items-start gap-2 px-4 pt-2.5">
+            <FilePreview {...preview} />
+            <button onClick={() => setPreview(null)}
+              className="w-7 h-7 flex items-center justify-center rounded-full border-none bg-transparent text-[#6c7883] cursor-pointer transition-colors duration-150 hover:bg-[#202b36] hover:text-white shrink-0">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          </div>
+        )}
+>>>>>>> 0378d05a57b015d813c4c194c226eb231a3eccbc
         {replyTo && onCancelReply && <ReplyBar replyTo={replyTo} onCancel={onCancelReply} />}
         {forwardMsg && onCancelForward && (
           <div className="flex items-center gap-2.5 px-3.5 py-[7px] border-t border-[#0d1821]">
@@ -369,7 +458,11 @@ export default function DMPanel({
                 <div className="text-[12.5px] text-[#8b98a5] truncate">{forwardMsg.text || "📎 File"}</div>
               </div>
             </div>
+<<<<<<< HEAD
             <button onClick={() => { onCancelForward?.(); }}
+=======
+            <button onClick={() => { setMessage(""); setPreview(null); onCancelForward?.(); }}
+>>>>>>> 0378d05a57b015d813c4c194c226eb231a3eccbc
               className="w-7 h-7 flex items-center justify-center rounded-full border-none bg-transparent text-[#6c7883] cursor-pointer transition-colors duration-150 hover:bg-[#202b36] hover:text-[#c5cdd6] shrink-0">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                 <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
@@ -377,6 +470,7 @@ export default function DMPanel({
             </button>
           </div>
         )}
+<<<<<<< HEAD
 
         {/* ── Recording Preview Bar — OUTSIDE the input row ── */}
         {recording && (
@@ -444,5 +538,46 @@ export default function DMPanel({
           />
         </div>
       </div>
+=======
+        <div className="flex items-center gap-1.5 px-2.5 py-2">
+          <button onClick={() => fileInputRef.current?.click()} disabled={uploading}
+            className={`w-[38px] h-[38px] flex items-center justify-center rounded-full border-none bg-transparent cursor-pointer transition-colors duration-150 shrink-0 hover:bg-[#202b36] hover:text-[#5288c1] ${uploading ? "text-[#5288c1]" : "text-[#8b98a5]"}`}>
+            {uploading ? (
+              <svg className="animate-spin" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+              </svg>
+            ) : (
+              <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+                <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+              </svg>
+            )}
+          </button>
+          <input ref={fileInputRef} type="file" className="hidden" accept=".jpg,.jpeg,.png,.gif,.pdf,.docx,.doc" onChange={handleFileChange} />
+          <input
+            className="flex-1 h-10 bg-[#242f3d] border-none rounded-[22px] px-[18px] text-[14.5px] text-white outline-none placeholder:text-[#6c7883]"
+            value={message}
+            onChange={e => { setMessage(e.target.value); onTyping(e.target.value); }}
+            placeholder={forwardMsg ? "Add a caption…" : preview ? `Caption for ${withUser}…` : `Message ${withUser}…`}
+            onKeyDown={e => e.key === "Enter" && handleSend()}
+          />
+          <button onClick={hasContent ? handleSend : undefined}
+            className="w-10 h-10 flex items-center justify-center rounded-full border-none bg-[#5288c1] text-white cursor-pointer transition-colors duration-150 shrink-0 hover:bg-[#4377aa] active:scale-95">
+            {hasContent ? (
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" />
+              </svg>
+            ) : (
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                <line x1="12" y1="19" x2="12" y2="23" /><line x1="8" y1="23" x2="16" y2="23" />
+              </svg>
+            )}
+          </button>
+        </div>
+      </div>
+
+    </div>
+>>>>>>> 0378d05a57b015d813c4c194c226eb231a3eccbc
   );
 }

@@ -93,7 +93,6 @@ export default function DMList({
 
               {/* Bottom row: last message + unread badge */}
               <div className="flex items-center justify-between gap-1.5">
-<<<<<<< HEAD
                 <div className={`text-[13px] truncate flex-1 flex items-center gap-1
                   ${isActive ? "text-white/65" : "text-[#8b98a5]"}`}
                 >
@@ -107,14 +106,6 @@ export default function DMList({
                       <line x1="8" y1="23" x2="16" y2="23"/>
                     </svg>
                   )}
-=======
-                <div
-                  className={`
-                    text-[13px] truncate flex-1
-                    ${isActive ? "text-white/65" : "text-[#8b98a5]"}
-                  `}
-                >
->>>>>>> 0378d05a57b015d813c4c194c226eb231a3eccbc
                   {conv.lastMessage || "…"}
                 </div>
                 {conv.unread > 0 && !isActive && (

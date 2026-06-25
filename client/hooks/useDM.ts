@@ -215,31 +215,22 @@ export function useDM(socket: Socket | null, username: string) {
       tempId?: string;
       from: string;
       time: string;
-<<<<<<< HEAD
       text?: string;
-=======
->>>>>>> 0378d05a57b015d813c4c194c226eb231a3eccbc
       forwarded?: boolean;
       caption?: string;
       fromUsername?: string;
       replyTo?: { _id: string; username: string; text: string };
       audioUrl?: string;
       audioDuration?: number;
-<<<<<<< HEAD
       fileUrl?: string;
       fileName?: string;
       fileType?: string;
       isImage?: boolean;
     }) => {
-=======
-    }) => {
-      // Normal message only — call messages now come through dm_receive
->>>>>>> 0378d05a57b015d813c4c194c226eb231a3eccbc
       setDmMessages((prev) =>
         prev.map((msg) =>
           msg._id === data.tempId
             ? {
-<<<<<<< HEAD
                 ...msg,          // keep everything from optimistic message
                 _id:           data._id,
                 status:        "sent" as MessageStatus,
@@ -254,17 +245,6 @@ export function useDM(socket: Socket | null, username: string) {
                 ...(data.replyTo      && { replyTo:      data.replyTo }),
                 ...(data.caption      && { caption:      data.caption }),
                 ...(data.fromUsername && { fromUsername: data.fromUsername }),
-=======
-                ...msg,
-                _id:           data._id,
-                status:        "sent" as MessageStatus,
-                forwarded:     data.forwarded     ?? msg.forwarded,
-                replyTo:       data.replyTo       ?? msg.replyTo,
-                audioUrl:      data.audioUrl      ?? msg.audioUrl,
-                audioDuration: data.audioDuration ?? msg.audioDuration,
-                caption:       data.caption       ?? msg.caption,
-                fromUsername:  data.fromUsername  ?? msg.fromUsername,
->>>>>>> 0378d05a57b015d813c4c194c226eb231a3eccbc
               }
             : msg
         )

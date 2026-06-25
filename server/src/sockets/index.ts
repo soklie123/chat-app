@@ -6,10 +6,7 @@ import { registerRoomHandlers } from "./room.handlers";
 import { registerMessageHandlers } from "./message.handlers";
 import { registerReactionHandlers } from "./reaction.handlers";
 import { registerDMHandlers } from "./dm.handlers";
-<<<<<<< HEAD
-=======
 import { registerAIHandlers } from "./ai.handlers";
->>>>>>> 0378d05a57b015d813c4c194c226eb231a3eccbc
 
 export function registerSocketHandlers(io: Server) {
   io.on("connection", (socket: Socket) => {
@@ -23,10 +20,7 @@ export function registerSocketHandlers(io: Server) {
     registerMessageHandlers(io, socket);
     registerReactionHandlers(io, socket);
     registerDMHandlers(io, socket);
-<<<<<<< HEAD
-=======
     registerAIHandlers(io, socket);
->>>>>>> 0378d05a57b015d813c4c194c226eb231a3eccbc
 
     // ── Disconnect ─────────────────────────────────────────
     socket.on("disconnect", async () => {

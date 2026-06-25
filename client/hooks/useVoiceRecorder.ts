@@ -1,21 +1,13 @@
-<<<<<<< HEAD
 import { useEffect, useRef, useState } from "react";
 
 export default function useVoiceRecorder(
   onRecorded: (blob: Blob, duration: number) => void,
   waveCanvasRef?: React.RefObject<HTMLCanvasElement | null>,
   scrollCanvasRef?: React.RefObject<HTMLCanvasElement | null>
-=======
-import { useRef, useState } from "react";
-
-export default function useVoiceRecorder(
-  onRecorded: (blob: Blob, duration: number) => void
->>>>>>> 0378d05a57b015d813c4c194c226eb231a3eccbc
 ) {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const startTimeRef = useRef<number>(0);
-<<<<<<< HEAD
   const cancelledRef = useRef(false);
 
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -175,34 +167,16 @@ export default function useVoiceRecorder(
 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
-=======
-
-  const [recording, setRecording] = useState(false);
-
-  const start = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-      });
->>>>>>> 0378d05a57b015d813c4c194c226eb231a3eccbc
 
       const mimeType = MediaRecorder.isTypeSupported("audio/webm")
         ? "audio/webm"
         : "audio/ogg";
 
-<<<<<<< HEAD
       const mediaRecorder = new MediaRecorder(stream, { mimeType });
-=======
-      const mediaRecorder = new MediaRecorder(stream, {
-        mimeType,
-      });
-
->>>>>>> 0378d05a57b015d813c4c194c226eb231a3eccbc
       mediaRecorderRef.current = mediaRecorder;
       chunksRef.current = [];
       startTimeRef.current = Date.now();
 
-<<<<<<< HEAD
       mediaRecorder.ondataavailable = (e: BlobEvent) => {
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
@@ -225,36 +199,10 @@ export default function useVoiceRecorder(
     } catch (err) {
       console.error(err);
       alert("Microphone access denied.");
-=======
-      mediaRecorder.ondataavailable = (event: BlobEvent) => {
-        if (event.data.size > 0) {
-          chunksRef.current.push(event.data);
-        }
-      };
-
-      mediaRecorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, {
-          type: mimeType,
-        });
-
-        const duration = (Date.now() - startTimeRef.current) / 1000;
-
-        stream.getTracks().forEach((track) => track.stop());
-
-        onRecorded(blob, duration);
-      };
-
-      mediaRecorder.start();
-      setRecording(true);
-    } catch (error) {
-      console.error(error);
-      alert("Microphone access denied. Please allow microphone access.");
->>>>>>> 0378d05a57b015d813c4c194c226eb231a3eccbc
     }
   };
 
   const stop = () => {
-<<<<<<< HEAD
     stopWaveform();
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(t => t.stop());
@@ -277,17 +225,4 @@ export default function useVoiceRecorder(
   };
 
   return { recording, start, stop, cancel };
-=======
-    if (mediaRecorderRef.current && recording) {
-      mediaRecorderRef.current.stop();
-      setRecording(false);
-    }
-  };
-
-  return {
-    recording,
-    start,
-    stop,
-  };
->>>>>>> 0378d05a57b015d813c4c194c226eb231a3eccbc
 }

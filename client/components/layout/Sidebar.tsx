@@ -1,20 +1,13 @@
-<<<<<<< HEAD
-=======
 "use client";
->>>>>>> 0378d05a57b015d813c4c194c226eb231a3eccbc
 import { useState, useRef, useEffect } from "react";
 import { DMConversation } from "../../types/chat";
 import DMList from "../dm/DMList";
 import { getAvatarColor } from "../../hooks/useChat";
 import ProfilePanel from "./ProfilePanel";
 
-<<<<<<< HEAD
-import { UserProfile } from "../../hooks/useChat"; 
-=======
 
 import { UserProfile } from "../../hooks/useChat"; 
 import AIButton from "../shared/Aibutton";
->>>>>>> 0378d05a57b015d813c4c194c226eb231a3eccbc
 
 type RoomSummary = { id: string; name: string; memberCount: number; members: string[] };
 
@@ -32,11 +25,7 @@ export default function Sidebar({
   onOpenRoom,
   onCreateGroup,
   roomUnread,
-<<<<<<< HEAD
-  userProfiles, // ✅ add this
-=======
   userProfiles,
->>>>>>> 0378d05a57b015d813c4c194c226eb231a3eccbc
 }: {
   username: string;
   onLogout: () => void;
@@ -50,10 +39,6 @@ export default function Sidebar({
   onOpenRoom: (roomId: string) => void;
   onCreateGroup: (name: string, members: string[]) => void;
   roomUnread: Record<string, number>;
-<<<<<<< HEAD
-
-=======
->>>>>>> 0378d05a57b015d813c4c194c226eb231a3eccbc
   userProfiles: Record<string, UserProfile>; 
 }){
   const [sidebarWidth, setSidebarWidth] = useState<number>(320);
@@ -276,10 +261,6 @@ export default function Sidebar({
         >
           <div className="h-full w-full hover:bg-white/5" />
         </div>
-<<<<<<< HEAD
-=======
-
->>>>>>> 0378d05a57b015d813c4c194c226eb231a3eccbc
         {/* ── Header ── */}
         <div className="px-3 py-2.5 flex items-center gap-2 bg-[#17212b] border-b border-[#0d1821] shrink-0">
           <div className="relative" ref={menuRef}>
@@ -453,12 +434,9 @@ export default function Sidebar({
           </svg>
         </button>
       </div>
-<<<<<<< HEAD
-=======
 
       {/* ── AI floating button — renders over the whole page ── */}
       <AIButton />
->>>>>>> 0378d05a57b015d813c4c194c226eb231a3eccbc
     </>
   );
 }

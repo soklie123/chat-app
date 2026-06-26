@@ -1,16 +1,19 @@
 import { DMConversation } from "../../types/chat";
 import Avatar from "../shared/Avatar";
+import { UserProfile } from "../../hooks/useChat";
 
 export default function DMList({
   conversations,
   activeDM,
   onOpen,
   onlineUsers,
+  userProfiles,
 }: {
   conversations: DMConversation[];
   activeDM: string | null;
   onOpen: (username: string) => void;
   onlineUsers: string[];
+  userProfiles?: Record<string, UserProfile>;
 }) {
   if (conversations.length === 0) {
     return (
@@ -25,6 +28,7 @@ export default function DMList({
       {conversations.map((conv) => {
         const isOnline = !conv.isGroup && onlineUsers.includes(conv.username);
         const isActive = activeDM === conv.username;
+        const avatarUrl = userProfiles?.[conv.username]?.avatarUrl;
 
         return (
           <button
@@ -38,7 +42,7 @@ export default function DMList({
           >
             {/* Avatar */}
             <div className="relative shrink-0">
-              <Avatar name={conv.username} size={46} />
+              <Avatar name={conv.username} size={46} avatarUrl={conv.isGroup ? undefined : avatarUrl} />
               {!conv.isGroup && (
                 <span
                   className={`

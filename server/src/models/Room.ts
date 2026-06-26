@@ -4,6 +4,7 @@ export interface IRoom extends Document {
   name: string;
   createdBy: string;
   members: string[];
+  avatarUrl?: string;
   createdAt: Date;
 }
 
@@ -12,6 +13,7 @@ const RoomSchema = new Schema<IRoom>(
     name: { type: String, required: true, unique: true, trim: true },
     createdBy: { type: String, required: true },
     members: { type: [String], default: [] },
+    avatarUrl: { type: String, default: "" },
   },
   { timestamps: true }
 );

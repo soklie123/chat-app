@@ -4,7 +4,7 @@ import Avatar from "../shared/Avatar";
 import TypingDots from "../shared/TypingDots";
 import FilePreview from "../shared/FilePreview";
 import axios from "axios";
-import { MdPhone, MdVideocam } from "react-icons/md";
+import { MdPhone, MdVideocam, MdInfoOutline } from "react-icons/md";
 import CallEventBubble from "../call/CallEventBubble";
 import MessageStatusIcon from "../chat/MessageStatus";
 import ReplyPreview from "../chat/Replypreview";
@@ -13,6 +13,8 @@ import { MessageBubble } from "../chat/MessageBubble";
 import useVoiceRecorder from "@/hooks/useVoiceRecorder";
 import AudioPlayer from "../shared/AudioPlayer";
 import InputBar from "../shared/InputBar";
+import UserProfileModal from "../layout/UserProfileModal";
+import { UserProfile } from "../../hooks/useChat";
 
 const UPLOAD_URL = "http://localhost:4000/upload";
 
@@ -21,6 +23,7 @@ export default function DMPanel({
   onSend, onTyping, onClose, onReact, onVideoCall, onVoiceCall,
   onSeen, onReply, onForward, allUsers, onlineUsers, rooms, replyTo,
   onCancelReply, forwardMsg, onCancelForward, onForwardSend,
+  withUserProfile,
 }: {
   currentUsername: string;
   withUser: string;
@@ -49,10 +52,13 @@ export default function DMPanel({
   forwardMsg?: { text: string; fromUsername: string };
   onCancelForward?: () => void;
   onForwardSend?: (text: string, fromUsername: string, caption: string) => void;
+  /** Profile (avatar/bio) of the person we're chatting with, for the docked info panel. */
+  withUserProfile?: UserProfile;
 }) {
   const [uploading, setUploading] = useState(false);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [showJumpBtn, setShowJumpBtn] = useState(false);
+  const [showInfoPanel, setShowInfoPanel] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -66,6 +72,12 @@ export default function DMPanel({
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const timerRef = useRef<number | null>(null);
   const waveCanvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  // Closing/switching the DM should also close the info panel so it doesn't
+  // carry over and show stale info for the next person opened.
+  useEffect(() => {
+    setShowInfoPanel(false);
+  }, [withUser]);
 
   // ── Scroll position tracker — MUST be inside useEffect so `el` exists ──
   useEffect(() => {
@@ -154,20 +166,28 @@ export default function DMPanel({
   };
 
   return (
-    <div className="h-full flex flex-col overflow-hidden bg-[#0e1621]">
+    <div className="h-full flex overflow-hidden bg-[#0e1621]">
+      {/* ── Chat column ── */}
+      <div className="h-full flex-1 flex flex-col overflow-hidden min-w-0">
 
       {/* ── Header ── */}
       <div className="bg-[#17212b] border-b border-[#0d1821] px-4 py-2.5 flex items-center gap-3 shrink-0">
-        <div className="relative">
-          <Avatar name={withUser} size={38} />
-          <span className={`absolute bottom-0 right-0 w-[11px] h-[11px] rounded-full border-2 border-[#17212b] ${isOnline ? "bg-[#4ade80]" : "bg-[#6c7883]"}`} />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="text-[15px] font-semibold text-white truncate">{withUser}</div>
-          <div className={`text-[12px] mt-px ${isOnline ? "text-[#4ade80]" : "text-[#8b98a5]"}`}>
-            {isOnline ? "online" : "offline"}
+        <button
+          onClick={() => setShowInfoPanel((v) => !v)}
+          className="flex items-center gap-3 flex-1 min-w-0 bg-transparent border-none cursor-pointer text-left p-0 rounded-lg hover:opacity-90 transition-opacity"
+          title={`View ${withUser}'s profile`}
+        >
+          <div className="relative shrink-0">
+            <Avatar name={withUser} size={38} avatarUrl={withUserProfile?.avatarUrl} />
+            <span className={`absolute bottom-0 right-0 w-[11px] h-[11px] rounded-full border-2 border-[#17212b] ${isOnline ? "bg-[#4ade80]" : "bg-[#6c7883]"}`} />
           </div>
-        </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-[15px] font-semibold text-white truncate">{withUser}</div>
+            <div className={`text-[12px] mt-px ${isOnline ? "text-[#4ade80]" : "text-[#8b98a5]"}`}>
+              {isOnline ? "online" : "offline"}
+            </div>
+          </div>
+        </button>
         <button title="Voice call" onClick={onVoiceCall}
           className="w-9 h-9 flex items-center justify-center rounded-full border-none bg-transparent text-[#8b98a5] cursor-pointer transition-colors duration-150 hover:bg-[#202b36] hover:text-[#5288c1] shrink-0">
           <MdPhone size={19} />
@@ -175,6 +195,15 @@ export default function DMPanel({
         <button title="Video call" onClick={onVideoCall}
           className="w-9 h-9 flex items-center justify-center rounded-full border-none bg-transparent text-[#8b98a5] cursor-pointer transition-colors duration-150 hover:bg-[#202b36] hover:text-[#5288c1] shrink-0">
           <MdVideocam size={19} />
+        </button>
+        <button
+          title="Profile info"
+          onClick={() => setShowInfoPanel((v) => !v)}
+          className={`w-9 h-9 flex items-center justify-center rounded-full border-none cursor-pointer transition-colors duration-150 shrink-0 ${
+            showInfoPanel ? "bg-[#202b36] text-[#5288c1]" : "bg-transparent text-[#8b98a5] hover:bg-[#202b36] hover:text-[#5288c1]"
+          }`}
+        >
+          <MdInfoOutline size={20} />
         </button>
         <button onClick={onClose}
           className="w-9 h-9 flex items-center justify-center rounded-full border-none bg-transparent text-[#8b98a5] cursor-pointer transition-colors duration-150 hover:bg-[#202b36] hover:text-white shrink-0">
@@ -192,7 +221,7 @@ export default function DMPanel({
 
             {messages.length === 0 && (
               <div className="flex flex-col items-center justify-center gap-3 text-[#6c7883] py-16">
-                <Avatar name={withUser} size={56} />
+                <Avatar name={withUser} size={56} avatarUrl={withUserProfile?.avatarUrl} />
                 <p className="text-[13px] text-center">
                   Start a conversation with <strong className="text-[#8b98a5]">{withUser}</strong>
                 </p>
@@ -272,7 +301,7 @@ export default function DMPanel({
                 </div>
               ) : (
                 <div key={id} className="flex items-end gap-2.5 max-w-[70%]">
-                  <div className="shrink-0 mb-1"><Avatar name={msg.username} size={32} /></div>
+                  <div className="shrink-0 mb-1"><Avatar name={msg.username} size={32} avatarUrl={withUserProfile?.avatarUrl} /></div>
                   <div className="flex-1 min-w-0">
                     <MessageBubble id={id} hoveredId={hoveredId} setHoveredId={setHoveredId}
                       fromSelf={false} msgId={msg._id} msgUsername={msg.username} msgText={msg.text}
@@ -328,7 +357,7 @@ export default function DMPanel({
 
             {dmTyping && (
               <div className="flex items-end gap-2.5 max-w-[70%] mt-1">
-                <Avatar name={withUser} size={32} />
+                <Avatar name={withUser} size={32} avatarUrl={withUserProfile?.avatarUrl} />
                 <div className="bg-[#182533] border border-[#101921] rounded-2xl rounded-tl-[4px] px-3.5 py-2.5 shadow-[0_2px_6px_rgba(0,0,0,0.25)]">
                   <TypingDots />
                 </div>
@@ -444,5 +473,17 @@ export default function DMPanel({
           />
         </div>
       </div>
+
+      {/* ── Profile info popup ── */}
+      {showInfoPanel && (
+        <UserProfileModal
+          username={withUser}
+          profile={withUserProfile}
+          isOnline={isOnline}
+          onClose={() => setShowInfoPanel(false)}
+          onOpenDM={() => setShowInfoPanel(false)}
+        />
+      )}
+    </div>
   );
 }

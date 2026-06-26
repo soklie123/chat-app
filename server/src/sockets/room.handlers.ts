@@ -6,50 +6,59 @@ import { onlineUsers, rooms, broadcastRoomList, getSocketId, SYSTEM_ROOMS } from
 
 // ── Helper: save + broadcast a system message ──────────
 async function sendSystemMessage(io: Server, roomId: string, text: string) {
+  const timeStr = new Date().toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
   const msg = await Message.create({
     room: roomId,
     username: "system",
     text,
-    time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    time: timeStr,
   });
 
+  // msg._id always exists on a saved Mongoose doc; cast to access it safely
+  // when the model's inferred return type is too narrow.
+  const docId = (msg as { _id: unknown })._id;
+
   io.to(roomId).emit("receive_message", {
-    _id: msg._id,
+    _id: docId,
     roomId,
     username: "system",
     text,
-    time: msg.time,
+    time: timeStr,
     reactions: [],
   });
 }
 
 export function registerRoomHandlers(io: Server, socket: Socket) {
 
- socket.on("register_user", async () => {
-  // Use the JWT-verified username, not a client-supplied string
-  const username = socket.data.username as string | undefined;
-  if (!username) return;
+  socket.on("register_user", async () => {
+    const username = socket.data.username as string | undefined;
+    if (!username) return;
 
-  onlineUsers.set(socket.id, username);
-  await User.findOneAndUpdate(
-    { username },
-    { username, lastSeen: new Date() },
-    { upsert: true, returnDocument: "after" }
-  );
-
-  for (const { name } of SYSTEM_ROOMS) {
-    await Room.findOneAndUpdate(
-      { name },
-      { $addToSet: { members: username } }
+    onlineUsers.set(socket.id, username);
+    await User.findOneAndUpdate(
+      { username },
+      { username, lastSeen: new Date() },
+      { upsert: true, returnDocument: "after" }
     );
-    if (!rooms.has(name)) rooms.set(name, new Set());
-  }
 
-  io.emit("online_users", Array.from(onlineUsers.values()));
-  const allUsers = await User.find({}, "username").lean();
-  io.emit("all_users", allUsers.map((u) => u.username));
-  await broadcastRoomList(io);
-});
+    for (const { name } of SYSTEM_ROOMS) {
+      await Room.findOneAndUpdate(
+        { name },
+        { $addToSet: { members: username } }
+      );
+      if (!rooms.has(name)) rooms.set(name, new Set());
+    }
+
+    io.emit("online_users", Array.from(onlineUsers.values()));
+    const allUsers = await User.find({}, "username").lean();
+    io.emit("all_users", allUsers.map((u) => u.username));
+    await broadcastRoomList(io);
+  });
+
   socket.on("unregister_user", async () => {
     const username = onlineUsers.get(socket.id);
     if (username) {
@@ -60,7 +69,6 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
     io.emit("online_users", Array.from(onlineUsers.values()));
     const allUsers = await User.find({}, "username").lean();
     socket.emit("all_users", allUsers.map((u) => u.username));
-
     await broadcastRoomList(io);
   });
 
@@ -147,7 +155,6 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
         });
       }
 
-      // ── System message: X added Y ──────────────────────
       await sendSystemMessage(io, roomId, `${invitedBy} added ${targetUsername}`);
     }
 
@@ -170,7 +177,6 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
 
     rooms.get(roomId)?.delete(username);
 
-    // ── System message: X left the group ──────────────── 
     // Send BEFORE socket.leave so the leaver's socket still receives it
     await sendSystemMessage(io, roomId, `${username} left the group`);
 
@@ -225,24 +231,52 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
     }
   });
 
+  // ── Update group avatar ────────────────────────────────
+  socket.on(
+    "update_group_avatar",
+    async ({ roomId, avatarUrl }: { roomId: string; avatarUrl: string }) => {
+      const username = onlineUsers.get(socket.id);
+      if (!username || !roomId || !avatarUrl) return;
+
+      const roomDoc = await Room.findOne({ name: roomId });
+      if (!roomDoc) return;
+
+      if (!roomDoc.members.includes(username)) {
+        socket.emit("update_group_avatar_denied", { roomId, reason: "not_a_member" });
+        return;
+      }
+
+      await Room.findOneAndUpdate({ name: roomId }, { avatarUrl });
+
+      // Broadcast live update to all sockets currently in the room
+      io.to(roomId).emit("group_avatar_updated", { roomId, avatarUrl });
+
+      // Refresh room list for all clients so persisted avatarUrl is included
+      await broadcastRoomList(io);
+    }
+  );
+
   // ── Pagination ─────────────────────────────────────────
-  socket.on("load_older_messages", async ({ room, before }: { room: string; before: string | Date }) => {
-    const username = onlineUsers.get(socket.id);
-    if (!username) return;
+  socket.on(
+    "load_older_messages",
+    async ({ room, before }: { room: string; before: string | Date }) => {
+      const username = onlineUsers.get(socket.id);
+      if (!username) return;
 
-    const roomDoc = await Room.findOne({ name: room });
-    if (!roomDoc || !(roomDoc.members ?? []).includes(username)) return;
+      const roomDoc = await Room.findOne({ name: room });
+      if (!roomDoc || !(roomDoc.members ?? []).includes(username)) return;
 
-    const older = await Message.find({
-      room,
-      createdAt: { $lt: new Date(before) },
-    })
-      .sort({ createdAt: -1 })
-      .limit(30);
+      const older = await Message.find({
+        room,
+        createdAt: { $lt: new Date(before) },
+      })
+        .sort({ createdAt: -1 })
+        .limit(30);
 
-    socket.emit("older_messages", {
-      messages: older.reverse(),
-      hasMore: older.length === 30,
-    });
-  });
+      socket.emit("older_messages", {
+        messages: older.reverse(),
+        hasMore: older.length === 30,
+      });
+    }
+  );
 }

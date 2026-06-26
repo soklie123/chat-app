@@ -75,6 +75,22 @@ export function useChat(username: string) {
       setSocket(sock);
       setAuthError(null);
       sock.emit("register_user");
+
+      // Seed userProfiles on connect so avatars show immediately in the sidebar.
+      // The "user_profile_updated" socket event keeps them live after this.
+      const currentToken = getToken();
+      fetch(`${SOCKET_URL}/auth/users/profiles`, {
+        headers: currentToken ? { Authorization: `Bearer ${currentToken}` } : {},
+      })
+        .then((r) => r.json())
+        .then(({ users }: { users: { username: string; avatarUrl: string; bio: string }[] }) => {
+          setUserProfiles(
+            Object.fromEntries(
+              users.map((u) => [u.username, { avatarUrl: u.avatarUrl ?? "", bio: u.bio ?? "" }])
+            )
+          );
+        })
+        .catch((err) => console.error("Failed to seed user profiles:", err));
     });
 
     sock.on("connect_error", (err) => {
@@ -86,7 +102,7 @@ export function useChat(username: string) {
     sock.on("online_users", (users: string[]) => setOnlineUsers(users));
     sock.on("all_users", (users: string[]) => setAllUsers(users));
 
-    // When server broadcasts a profile update, store it so all components
+    // When server broadcasts a profile update, merge it in so all components
     // that consume userProfiles re-render with the new avatar/bio.
     sock.on(
       "user_profile_updated",

@@ -8,6 +8,7 @@ import CallEventBubble from "../call/CallEventBubble";
 import MessageStatusIcon from "./MessageStatus";
 import ReplyPreview from "./Replypreview";
 import { MessageBubble } from "./MessageBubble";
+import { UserProfile } from "../../hooks/useChat";
 
 function ReactionBubbles({
   reactions,
@@ -54,6 +55,7 @@ export default function MessageList({
   allUsers,
   onlineUsers,
   rooms,
+  userProfiles,
 }: {
   messages: ChatMessage[];
   typingUser: TypingUser | null;
@@ -66,8 +68,7 @@ export default function MessageList({
   allUsers: string[];
   onlineUsers: string[];
   rooms: { id: string; name: string }[];
-
-  
+  userProfiles?: Record<string, UserProfile>;
 }) {
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -91,7 +92,7 @@ export default function MessageList({
   // ── Smart auto-scroll: only jump if already near bottom ──
   useEffect(() => {
     if (!isNearBottomRef.current) return;
-    const el = containerRef.current; // scrollRef.current in DMPanel
+    const el = containerRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
   }, [messages, typingUser]);
@@ -116,14 +117,13 @@ export default function MessageList({
   }, [messages]);
 
   const scrollToBottom = () => {
-    const el = containerRef.current; // scrollRef.current in DMPanel
+    const el = containerRef.current;
     if (!el) return;
     el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
     setShowJumpBtn(false);
   };
 
   return (
-    // ── relative wrapper so the jump button can be absolute-positioned ──
     <div className="flex-1 overflow-hidden relative">
 
       <div ref={containerRef} className="custom-scrollbar h-full overflow-y-auto px-5 py-4 bg-[#0e1621]">
@@ -217,7 +217,11 @@ export default function MessageList({
             ) : (
               <div key={id} className="flex items-end gap-2.5 max-w-[70%]">
                 <div className="shrink-0 mb-1">
-                  <Avatar name={msg.username} size={32} />
+                  <Avatar
+                    name={msg.username}
+                    size={32}
+                    avatarUrl={userProfiles?.[msg.username]?.avatarUrl}
+                  />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-[12px] text-[#5288c1] mb-1 ml-1.5 font-semibold tracking-wide">
@@ -283,7 +287,11 @@ export default function MessageList({
         {/* Typing indicator */}
         {typingUser && (
           <div className="flex items-end gap-2.5 max-w-[70%] mt-3">
-            <Avatar name={typingUser.name} size={32} />
+            <Avatar
+              name={typingUser.name}
+              size={32}
+              avatarUrl={userProfiles?.[typingUser.name]?.avatarUrl}
+            />
             <div>
               <div className="text-[12px] text-[#5288c1] mb-1 ml-1.5 font-semibold">
                 @{typingUser.name}

@@ -35,7 +35,7 @@ export default function Home() {
   };
 
   const {
-    socket, connected, onlineUsers, allUsers, rooms, createRoom, logout,userProfiles
+    socket, connected, onlineUsers, allUsers, rooms, createRoom, logout, userProfiles
   } = useChat(username);
 
   const {
@@ -270,32 +270,36 @@ export default function Home() {
 
         <div className="flex-1 flex flex-col overflow-hidden">
           {currentRoom ? (
-            <RoomView
-              currentRoom={currentRoom}
-              connected={connected}
-              onlineUsers={onlineUsers}
-              currentUsername={username}
-              messages={roomMessages}
-              typingUser={roomTyping}
-              rooms={rooms}
-              onOpenDM={handleOpenDM}
-              onReact={handleReact}
-              onSeen={markRoomSeen}
-              replyTo={roomReplyTo}
-              setReplyTo={setRoomReplyTo}
-              forwardData={forwardData}
-              setForwardData={setForwardData}
-              sendForward={sendForward}
-              onSend={handleSend}
-              onTyping={emitRoomTyping}
-              onForward={handleForward}
-              onLeaveGroup={leaveGroup}
-              onDeleteGroup={deleteGroup}
-              onDeleteChat={deleteRoomChat} allUsers={[]}            />
+           <RoomView
+  currentRoom={currentRoom}
+  connected={connected}
+  allUsers={allUsers}
+  onlineUsers={onlineUsers}
+  currentUsername={username}
+  messages={roomMessages}
+  typingUser={roomTyping}
+  rooms={rooms}
+  userProfiles={userProfiles}
+  onOpenDM={handleOpenDM}
+  onReact={handleReact}
+  onSeen={markRoomSeen}
+  replyTo={roomReplyTo}
+  setReplyTo={setRoomReplyTo}
+  forwardData={forwardData}
+  setForwardData={setForwardData}
+  sendForward={sendForward}
+  onSend={handleSend}
+  onTyping={emitRoomTyping}
+  onForward={handleForward}
+  onLeaveGroup={leaveGroup}
+  onDeleteGroup={deleteGroup}
+  onDeleteChat={deleteRoomChat}
+     />
           ) : activeDM ? (
             <DMPanel
               currentUsername={username}
               withUser={activeDM}
+              withUserProfile={userProfiles[activeDM]}
               messages={dmMessages}
               dmTyping={dmTyping}
               isOnline={onlineUsers.includes(activeDM)}

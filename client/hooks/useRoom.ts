@@ -41,6 +41,8 @@ export function useRoom(socket: Socket | null, username: string) {
   const [hasMoreHistory, setHasMoreHistory] = useState(false);
   const [typingUser, setTypingUser] = useState<TypingUser | null>(null);
   const [roomUnread, setRoomUnread] = useState<Record<string, number>>({});
+  // Map of roomId → avatarUrl, updated live via socket events
+  const [roomAvatars, setRoomAvatars] = useState<Record<string, string>>({});
 
   const currentRoomRef = useRef<string | null>(null);
   useEffect(() => {
@@ -103,9 +105,8 @@ export function useRoom(socket: Socket | null, username: string) {
       });
     };
 
-    // ── NEW: lightweight unread bump from server for background rooms ──
+    // ── Lightweight unread bump from server for background rooms ──
     const onUnreadBump = ({ roomId, username: fromUser }: { roomId: string; username: string }) => {
-      // Ignore if we sent it or if that room is currently open
       if (fromUser === username) return;
       if (roomId === currentRoomRef.current) return;
 
@@ -182,10 +183,21 @@ export function useRoom(socket: Socket | null, username: string) {
 
     const onGroupMemberLeft = (_: { roomId: string; username: string }) => {};
 
+    // ── Group avatar updated (live broadcast from server) ──
+    const onGroupAvatarUpdated = ({
+      roomId,
+      avatarUrl,
+    }: {
+      roomId: string;
+      avatarUrl: string;
+    }) => {
+      setRoomAvatars((prev) => ({ ...prev, [roomId]: avatarUrl }));
+    };
+
     socket.on("chat_history", onHistory);
     socket.on("older_messages", onOlder);
     socket.on("receive_message", onReceive);
-    socket.on("room_unread_bump", onUnreadBump);   // ← new
+    socket.on("room_unread_bump", onUnreadBump);
     socket.on("user_typing", onUserTyping);
     socket.on("user_stop_typing", onUserStopTyping);
     socket.on("message_reaction_updated", onReactionUpdated);
@@ -196,12 +208,13 @@ export function useRoom(socket: Socket | null, username: string) {
     socket.on("group_deleted", onGroupDeleted);
     socket.on("room_chat_cleared", onRoomChatCleared);
     socket.on("group_member_left", onGroupMemberLeft);
+    socket.on("group_avatar_updated", onGroupAvatarUpdated);
 
     return () => {
       socket.off("chat_history", onHistory);
       socket.off("older_messages", onOlder);
       socket.off("receive_message", onReceive);
-      socket.off("room_unread_bump", onUnreadBump);  // ← new
+      socket.off("room_unread_bump", onUnreadBump);
       socket.off("user_typing", onUserTyping);
       socket.off("user_stop_typing", onUserStopTyping);
       socket.off("message_reaction_updated", onReactionUpdated);
@@ -212,6 +225,7 @@ export function useRoom(socket: Socket | null, username: string) {
       socket.off("group_deleted", onGroupDeleted);
       socket.off("room_chat_cleared", onRoomChatCleared);
       socket.off("group_member_left", onGroupMemberLeft);
+      socket.off("group_avatar_updated", onGroupAvatarUpdated);
     };
   }, [socket, username]);
 
@@ -338,12 +352,47 @@ export function useRoom(socket: Socket | null, username: string) {
     [socket]
   );
 
+  /**
+   * Upload a new group avatar image and notify all room members via socket.
+   * - Uploads the file to /upload REST endpoint → gets Cloudinary URL
+   * - Emits update_group_avatar to server which saves to DB + broadcasts group_avatar_updated
+   */
+  const updateGroupAvatar = useCallback(
+    async (roomId: string, file: File): Promise<void> => {
+      if (!socket || !roomId || !file) return;
+
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const token =
+        typeof window !== "undefined"
+          ? localStorage.getItem("chatapp_token")
+          : null;
+
+      const res = await fetch("http://localhost:4000/upload", {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as any).error ?? "Avatar upload failed");
+      }
+
+      const { url } = await res.json();
+      socket.emit("update_group_avatar", { roomId, avatarUrl: url });
+    },
+    [socket]
+  );
+
   return {
     currentRoom,
     roomMessages,
     hasMoreHistory,
     typingUser,
     roomUnread,
+    roomAvatars,
     openRoom,
     closeRoom,
     sendRoomMessage,
@@ -354,6 +403,7 @@ export function useRoom(socket: Socket | null, username: string) {
     leaveGroup,
     deleteGroup,
     deleteRoomChat,
+    updateGroupAvatar,
   };
 }
 

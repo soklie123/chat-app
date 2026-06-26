@@ -16,6 +16,20 @@ type ProfileData = {
 
 type Tab = "profile" | "password";
 
+// Shared helper: axios errors carry `response.data.error` from our API;
+// anything else falls back to a generic message. This replaces the
+// `catch (err: any)` pattern (which trips the no-explicit-any lint rule)
+// with a properly narrowed `unknown` catch.
+function getErrorMessage(err: unknown, fallback: string): string {
+  if (axios.isAxiosError(err)) {
+    const apiMessage = err.response?.data?.error;
+    if (typeof apiMessage === "string" && apiMessage.length > 0) {
+      return apiMessage;
+    }
+  }
+  return fallback;
+}
+
 export default function ProfilePanel({
   username,
   onClose,
@@ -66,8 +80,8 @@ export default function ProfilePanel({
         setProfile(u);
         setBioValue(u.bio ?? "");
       })
-      .catch((err) => {
-        flash(err?.response?.data?.error ?? "Failed to load profile.", true);
+      .catch((err: unknown) => {
+        flash(getErrorMessage(err, "Failed to load profile."), true);
       });
   }, []);
 
@@ -97,8 +111,8 @@ export default function ProfilePanel({
       // connected clients pick up the new URL through useChat → userProfiles.
       onAvatarChange?.(url);
       flash("Avatar updated!");
-    } catch (err: any) {
-      flash(err?.response?.data?.error ?? "Failed to upload avatar.", true);
+    } catch (err: unknown) {
+      flash(getErrorMessage(err, "Failed to upload avatar."), true);
     } finally {
       setUploadingAvatar(false);
       if (avatarInputRef.current) avatarInputRef.current.value = "";
@@ -116,8 +130,8 @@ export default function ProfilePanel({
       setProfile((p) => ({ ...p, bio: res.data.user.bio }));
       setEditBio(false);
       flash("Bio saved!");
-    } catch (err: any) {
-      flash(err?.response?.data?.error ?? "Failed to save bio.", true);
+    } catch (err: unknown) {
+      flash(getErrorMessage(err, "Failed to save bio."), true);
     } finally {
       setSaving(false);
     }
@@ -147,8 +161,8 @@ export default function ProfilePanel({
       setNewPw("");
       setConfirmPw("");
       flash("Password changed successfully!");
-    } catch (err: any) {
-      flash(err?.response?.data?.error ?? "Failed to change password.", true);
+    } catch (err: unknown) {
+      flash(getErrorMessage(err, "Failed to change password."), true);
     } finally {
       setSaving(false);
     }
@@ -222,6 +236,7 @@ export default function ProfilePanel({
               <div className="flex flex-col items-center pt-6 pb-5 px-4 bg-[#17212b]">
                 <div className="relative group">
                   {profile.avatarUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={profile.avatarUrl}
                       alt={username}

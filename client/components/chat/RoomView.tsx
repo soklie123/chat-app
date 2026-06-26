@@ -3,6 +3,7 @@ import MessageList from "./MessageList";
 import InputBar from "../shared/InputBar";
 import ForwardBar from "../shared/ForwardBar";
 import RoomHeader from "./RoomHeader";
+import { UserProfile } from "../../hooks/useChat";
 
 type ReplyDraft = { _id: string; username: string; text: string } | null;
 type ForwardDraft = { text: string; fromUsername: string } | null;
@@ -12,6 +13,7 @@ type RoomSummary = {
   memberCount: number;
   members: string[];
   createdBy: string;
+  avatarUrl?: string;
 };
 
 type SendFile = {
@@ -34,6 +36,7 @@ export default function RoomView({
   messages,
   typingUser,
   rooms,
+  userProfiles,
   onOpenDM,
   onReact,
   onSeen,
@@ -48,6 +51,7 @@ export default function RoomView({
   onLeaveGroup,
   onDeleteGroup,
   onDeleteChat,
+  onUpdateGroupAvatar,
 }: {
   currentRoom: string;
   connected: boolean;
@@ -57,6 +61,7 @@ export default function RoomView({
   messages: ChatMessage[];
   typingUser: TypingUser | null;
   rooms: RoomSummary[];
+  userProfiles?: Record<string, UserProfile>;
   onOpenDM: (username: string) => void;
   onReact: (messageId: string, emoji: string) => void;
   onSeen: (ids: string[]) => void;
@@ -71,23 +76,25 @@ export default function RoomView({
   onLeaveGroup: (roomId: string) => void;
   onDeleteGroup: (roomId: string) => void;
   onDeleteChat: (roomId: string) => void;
+  onUpdateGroupAvatar?: (roomId: string, file: File) => void;
 }) {
   const room = rooms.find((r) => r.id === currentRoom);
-  const members = room?.members ?? [];
+
+  if (!room) return null;
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-[#0e1621]">
       <RoomHeader
-        currentRoom={room?.name ?? currentRoom}
-        members={members}
+        room={room}
         connected={connected}
         onlineUsers={onlineUsers}
         currentUsername={currentUsername}
-        createdBy={room?.createdBy}
+        userProfiles={userProfiles}
         onOpenDM={onOpenDM}
         onLeaveGroup={() => onLeaveGroup(currentRoom)}
         onDeleteGroup={() => onDeleteGroup(currentRoom)}
         onDeleteChat={() => onDeleteChat(currentRoom)}
+        onUpdateGroupAvatar={onUpdateGroupAvatar}
       />
 
       {messages.length === 0 ? (
@@ -101,7 +108,7 @@ export default function RoomView({
             </div>
             <div className="text-[#4a5568] text-[13px] max-w-[260px] leading-relaxed">
               Send the first message in{" "}
-              <span className="text-[#5288c1]">#{room?.name ?? currentRoom}</span>{" "}
+              <span className="text-[#5288c1]">#{room.name}</span>{" "}
               to get the conversation started
             </div>
           </div>
@@ -119,6 +126,7 @@ export default function RoomView({
           allUsers={allUsers}
           onlineUsers={onlineUsers}
           rooms={rooms}
+          userProfiles={userProfiles}
         />
       )}
 

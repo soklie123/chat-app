@@ -5,6 +5,7 @@ import { signToken } from "../utils/jwt";
 import { upload, uploadToCloudinary } from "../cloudinary";
 import { requireAuth } from "../middleware/auth.middleware";
 import { Server } from "socket.io";
+
 export const authRouter = Router();
 
 const USERNAME_REGEX = /^[a-zA-Z0-9_]{3,20}$/;
@@ -141,6 +142,17 @@ authRouter.get("/me", requireAuth, async (req, res) => {
   }
 });
 
+// GET /auth/users/profiles — returns { username, avatarUrl, bio }[] for all users
+authRouter.get("/users/profiles", requireAuth, async (_req, res) => {
+  try {
+    const users = await User.find({}, "username avatarUrl bio").lean();
+    res.json({ users });
+  } catch (err: any) {
+    console.error("Profiles error:", err?.message ?? err);
+    res.status(500).json({ error: "Failed to fetch profiles." });
+  }
+});
+
 // PATCH /auth/profile  (multipart/form-data: optional "avatar" file, optional "bio" text field)
 authRouter.patch("/profile", requireAuth, upload.single("avatar"), async (req, res) => {
   try {
@@ -160,16 +172,14 @@ authRouter.patch("/profile", requireAuth, upload.single("avatar"), async (req, r
       user.avatarUrl = url;
     }
 
-   await user.save();
+    await user.save();
 
-const io = req.app.get("io") as Server;
-
-io.emit("user_profile_updated", {
-  username: user.username,
-  avatarUrl: user.avatarUrl ?? "",
-  bio: user.bio ?? "",
-});
-
+    const io = req.app.get("io") as Server;
+    io.emit("user_profile_updated", {
+      username: user.username,
+      avatarUrl: user.avatarUrl ?? "",
+      bio: user.bio ?? "",
+    });
 
     res.json({ user: publicUser(user) });
   } catch (err: any) {

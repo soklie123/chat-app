@@ -147,6 +147,14 @@ export default function DMPanel({
     waveCanvasRef,
   );
 
+  const handleStartRecording = async () => {
+    setRecordingSeconds(0);
+    await start();
+    timerRef.current = window.setInterval(() => {
+      setRecordingSeconds((s) => s + 1);
+    }, 1000);
+  };
+
   const handleStopAndSend = () => {
     if (timerRef.current !== null) { window.clearInterval(timerRef.current); timerRef.current = null; }
     stop();  // hook handles waveform cleanup + sends via onRecorded
@@ -205,7 +213,9 @@ export default function DMPanel({
         >
           <MdInfoOutline size={20} />
         </button>
-        <button onClick={onClose}
+        <button 
+          title="close"
+          onClick={onClose}
           className="w-9 h-9 flex items-center justify-center rounded-full border-none bg-transparent text-[#8b98a5] cursor-pointer transition-colors duration-150 hover:bg-[#202b36] hover:text-white shrink-0">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
             <path d="M19 12H5M12 5l-7 7 7 7" />
@@ -230,20 +240,20 @@ export default function DMPanel({
 
             {messages.map((msg, i) => {
               const id = msg._id ?? String(i);
-              if (msg.callEvent) {
-                return (
-                  <div key={msg._id ?? i} className={`flex w-full ${msg.fromSelf ? "justify-end" : "justify-start"}`}>
-                    <CallEventBubble
-                        callEvent={msg.callEvent}
-                        callType={msg.callType ?? "voice"}
-                        callDuration={msg.callDuration}
-                        fromSelf={msg.fromSelf}
-                        username={msg.username}
-                        time={msg.time}
-                    />
-                  </div>
-                );
-              }
+              // if (msg.callEvent) {
+              //   return (
+              //     <div key={msg._id ?? i} className={`flex w-full ${msg.fromSelf ? "justify-end" : "justify-start"}`}>
+              //       <CallEventBubble
+              //           callEvent={msg.callEvent}
+              //           callType={msg.callType ?? "voice"}
+              //           callDuration={msg.callDuration}
+              //           fromSelf={msg.fromSelf}
+              //           username={msg.username}
+              //           time={msg.time}
+              //       />
+              //     </div>
+              //   );
+              // }
               return msg.fromSelf ? (
                 <div key={id} className="flex justify-end">
                   <div className="max-w-[70%]">
@@ -256,7 +266,13 @@ export default function DMPanel({
                       onlineUsers={onlineUsers ?? []} 
                       rooms={rooms ?? []} 
                       currentUsername={currentUsername}>
-                      <div className="bg-[#2b5278] border border-[#244565] rounded-2xl rounded-tr-[4px] px-3.5 py-2 text-[14.5px] text-[#f5f6f7] leading-relaxed shadow-[0_2px_6px_rgba(0,0,0,0.25)] relative">
+                      <div
+                        className={`rounded-2xl relative ${
+                          msg.callEvent
+                            ? "bg-transparent border-none shadow-none p-0"
+                            : "bg-[#2b5278] border border-[#244565] px-3.5 py-2 text-[#d1d5db]"
+                        }`}
+                      >
                         {msg.forwarded && (
                           <div className="text-[11px] text-[#8ab4f8] mb-1.5 flex items-center gap-1.5 border-l-2 border-[#5288c1] pl-2.5">
                             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -266,15 +282,60 @@ export default function DMPanel({
                           </div>
                         )}
                         {msg.replyTo && <ReplyPreview replyTo={msg.replyTo} fromSelf={true} />}
-                        {msg.text && <span className="whitespace-pre-wrap break-words block">{msg.text}</span>}
-                        {msg.caption && <div className="text-[12px] text-[#d1d5db] mt-1 italic">{msg.caption}</div>}
+                        {/* {msg.text && <span className="whitespace-pre-wrap break-words block">{msg.text}</span>} */}
+                        {msg.callEvent ? (
+                          <CallEventBubble
+                            callEvent={msg.callEvent}
+                            callType={msg.callType ?? "voice"}
+                            callDuration={msg.callDuration}
+                            fromSelf={msg.fromSelf}
+                            username={msg.username}
+                            time={msg.time}
+                          />
+                        ) : (
+                          <>
+                            {msg.text && (
+                              <span className="whitespace-pre-wrap break-words block">
+                                {msg.text}
+                              </span>
+                            )}
+
+                            {msg.caption && (
+                              <div className="text-[12px] text-[#d1d5db] mt-1 italic">
+                                {msg.caption}
+                              </div>
+                            )}
+
+                            {msg.audioUrl && (
+                              <AudioPlayer
+                                audioUrl={msg.audioUrl}
+                                audioDuration={
+                                  typeof msg.audioDuration === "string"
+                                    ? parseFloat(msg.audioDuration)
+                                    : msg.audioDuration ?? 0
+                                }
+                                fromSelf={msg.fromSelf}
+                              />
+                            )}
+
+                            {msg.fileUrl && (
+                              <FilePreview
+                                fileUrl={msg.fileUrl}
+                                fileName={msg.fileName}
+                                fileType={msg.fileType}
+                                isImage={msg.isImage}
+                              />
+                            )}
+                          </>
+                        )}
+                        {/* {msg.caption && <div className="text-[12px] text-[#d1d5db] mt-1 italic">{msg.caption}</div>}
                         {msg.audioUrl && (
                           <AudioPlayer
                             audioUrl={msg.audioUrl}
                             audioDuration={typeof msg.audioDuration === "string"
                               ? parseFloat(msg.audioDuration)
                               : (msg.audioDuration ?? 0)}
-                            fromSelf={false}
+                            fromSelf={msg.fromSelf}
                           />
                         )}
                         {msg.fileUrl && <FilePreview fileUrl={msg.fileUrl} fileName={msg.fileName} fileType={msg.fileType} isImage={msg.isImage} />}
@@ -290,11 +351,15 @@ export default function DMPanel({
                               );
                             })}
                           </div>
+                        )} */}
+                        {!msg.callEvent && (
+                          <div className="flex items-center justify-end gap-1 mt-1 opacity-75">
+                            <span className="text-[10px] text-[rgba(209,213,219,0.8)] font-medium">
+                              {msg.time}
+                            </span>
+                            <MessageStatusIcon status={msg.status} />
+                          </div>
                         )}
-                        <div className="flex items-center justify-end gap-1 mt-1 opacity-75">
-                          <span className="text-[10px] text-[rgba(209,213,219,0.8)] font-medium">{msg.time}</span>
-                          <MessageStatusIcon status={msg.status} />
-                        </div>
                       </div>
                     </MessageBubble>
                   </div>
@@ -312,7 +377,13 @@ export default function DMPanel({
                       onlineUsers={onlineUsers ?? []} 
                       rooms={rooms ?? []} 
                       currentUsername={currentUsername}>
-                      <div className="bg-[#182533] border border-[#101921] rounded-2xl rounded-tl-[4px] px-3.5 py-2 text-[14.5px] text-[#f5f6f7] leading-relaxed shadow-[0_2px_6px_rgba(0,0,0,0.25)] relative">
+                      <div
+                        className={`rounded-2xl relative ${
+                          msg.callEvent
+                            ? "bg-transparent border-none shadow-none p-0"
+                            : "bg-[#182533] border border-[#101921] px-3.5 py-2 text-[#d1d5db]"
+                        }`}
+                      >
                         {msg.forwarded && (
                           <div className="text-[11px] text-[#6c7883] mb-1.5 flex items-center gap-1.5 border-l-2 border-[#475569] pl-2.5">
                             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -322,15 +393,60 @@ export default function DMPanel({
                           </div>
                         )}
                         {msg.replyTo && <ReplyPreview replyTo={msg.replyTo} fromSelf={false} />}
-                        {msg.text && <span className="whitespace-pre-wrap break-words block">{msg.text}</span>}
-                        {msg.caption && <div className="text-[12px] text-[#9ca3af] mt-1 italic">{msg.caption}</div>}
+                        {/* {msg.text && <span className="whitespace-pre-wrap break-words block">{msg.text}</span>} */}
+                        {msg.callEvent ? (
+                          <CallEventBubble
+                            callEvent={msg.callEvent}
+                            callType={msg.callType ?? "voice"}
+                            callDuration={msg.callDuration}
+                            fromSelf={msg.fromSelf}
+                            username={msg.username}
+                            time={msg.time}
+                          />
+                        ) : (
+                          <>
+                            {msg.text && (
+                              <span className="whitespace-pre-wrap break-words block">
+                                {msg.text}
+                              </span>
+                            )}
+
+                            {msg.caption && (
+                              <div className="text-[12px] text-[#d1d5db] mt-1 italic">
+                                {msg.caption}
+                              </div>
+                            )}
+
+                            {msg.audioUrl && (
+                              <AudioPlayer
+                                audioUrl={msg.audioUrl}
+                                audioDuration={
+                                  typeof msg.audioDuration === "string"
+                                    ? parseFloat(msg.audioDuration)
+                                    : msg.audioDuration ?? 0
+                                }
+                                fromSelf={msg.fromSelf}
+                              />
+                            )}
+
+                            {msg.fileUrl && (
+                              <FilePreview
+                                fileUrl={msg.fileUrl}
+                                fileName={msg.fileName}
+                                fileType={msg.fileType}
+                                isImage={msg.isImage}
+                              />
+                            )}
+                          </>
+                        )}
+                        {/* {msg.caption && <div className="text-[12px] text-[#9ca3af] mt-1 italic">{msg.caption}</div>}
                         {msg.audioUrl && (
                           <AudioPlayer
                             audioUrl={msg.audioUrl}
                             audioDuration={typeof msg.audioDuration === "string"
                               ? parseFloat(msg.audioDuration)
                               : (msg.audioDuration ?? 0)}
-                            fromSelf={false}
+                            fromSelf={msg.fromSelf}
                           />
                         )}
                         {msg.fileUrl && <FilePreview fileUrl={msg.fileUrl} fileName={msg.fileName} fileType={msg.fileType} isImage={msg.isImage} />}
@@ -346,7 +462,7 @@ export default function DMPanel({
                               );
                             })}
                           </div>
-                        )}
+                        )} */}
                         <div className="text-[10px] text-[#9ca3af] mt-1 text-right font-medium opacity-75">{msg.time}</div>
                       </div>
                     </MessageBubble>
@@ -385,7 +501,11 @@ export default function DMPanel({
 
       {/* ── Bottom bar ── */}
       <div className="bg-[#17212b] border-t border-[#0d1821] shrink-0">
-        {replyTo && onCancelReply && <ReplyBar replyTo={replyTo} onCancel={onCancelReply} />}
+        {/* {replyTo && onCancelReply && 
+          <ReplyBar 
+            replyTo={replyTo} 
+            onCancel={onCancelReply} 
+          />} */}
         {forwardMsg && onCancelForward && (
           <div className="flex items-center gap-2.5 px-3.5 py-[7px] border-t border-[#0d1821]">
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#f4a93f" strokeWidth="2.2" strokeLinecap="round" className="shrink-0">
@@ -470,6 +590,10 @@ export default function DMPanel({
             forwardMsg={forwardMsg}
             onCancelForward={onCancelForward}
             onForwardSend={onForwardSend}
+            isRecording={recording}
+            onStartRecording={handleStartRecording}  
+            onStopRecording={handleStopAndSend}     
+            onCancelRecording={handleCancelRecording} 
           />
         </div>
       </div>

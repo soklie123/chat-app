@@ -63,6 +63,8 @@ export default function Sidebar({
   onPinRoom,
   onLeaveGroup,
   onDeleteGroup,
+  recording,
+
 }: {
   username: string;
   onLogout: () => void;
@@ -77,12 +79,15 @@ export default function Sidebar({
   onCreateGroup: (name: string, members: string[], avatarFile?: File) => void;
   roomUnread: Record<string, number>;
   userProfiles: Record<string, UserProfile>;
+
   archivedRooms: Set<string>;
   onArchiveRoom: (roomId: string) => void;
   pinnedRoomIds: Set<string>;
   onPinRoom: (roomId: string) => void;
   onLeaveGroup: (roomId: string) => void;
-  onDeleteGroup: (roomId: string) => void;
+  onDeleteGroup: (roomId: string) => void
+  recording?: boolean;
+
 }) {
   const [sidebarWidth, setSidebarWidth] = useState<number>(320);
   const minWidth = 220;
@@ -541,6 +546,7 @@ export default function Sidebar({
         <div className="px-3 py-2.5 flex items-center gap-2 bg-[#17212b] border-b border-[#0d1821] shrink-0">
           <div className="relative" ref={menuRef}>
             <button
+              title="header"
               onClick={() => setShowMenu((v) => !v)}
               className={`w-[38px] h-[38px] flex items-center justify-center rounded-full border-none text-[#8b98a5] cursor-pointer shrink-0 transition-colors duration-150 hover:bg-[#202b36] ${showMenu ? "bg-[#202b36]" : "bg-transparent"}`}
             >
@@ -698,6 +704,7 @@ export default function Sidebar({
       </div>
 
       <AIButton />
+      
     </>
   );
 }

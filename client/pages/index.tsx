@@ -12,7 +12,6 @@ import DMPanel from "../components/dm/DMPanel";
 import RoomView from "../components/chat/RoomView";
 import CallScreen from "../components/call/CallScreen";
 import { AuthUser } from "../lib/api";
-import { RoomSummary } from "../hooks/useChat";
 
 type ReplyDraft = { _id: string; username: string; text: string } | null;
 type ForwardDraft = { text: string; fromUsername: string } | null;

@@ -38,6 +38,9 @@ export function useCall(
     const callStartRef   = useRef<number | null>(null);
     const socketRef      = useRef<Socket | null>(null); // ← keep socket in ref
 
+    const [isRemoteCamOff, setIsRemoteCamOff] = useState(false);
+    const [isRemoteSharing, setIsRemoteSharing] = useState(false);
+
     // Keep socketRef current
     useEffect(() => {
         socketRef.current = socket;
@@ -72,6 +75,33 @@ export function useCall(
         setIsSharing(false);
     };
 
+    const clearRemoteVideo = () => {
+        setRemoteStream((prev) => {
+            if (!prev) return null;
+
+            prev.getTracks().forEach((t) => {
+                t.stop();
+                prev.removeTrack(t);
+            });
+            return null;
+        });
+    };
+
+    const createBlackTrack = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = 640;
+        canvas.height = 480;
+
+        const ctx = canvas.getContext("2d");
+        if (!ctx) throw new Error("Canvas context not available");
+
+        ctx.fillStyle = "black";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        const stream = canvas.captureStream(10);
+        return stream.getVideoTracks()[0];
+    };
+
     // ── Get media stream ───────────────────────────────────
     const getStream = async () => {
         return await navigator.mediaDevices.getUserMedia({
@@ -93,7 +123,30 @@ export function useCall(
             }
         };
 
-        pc.ontrack = (e) => setRemoteStream(e.streams[0]);
+        // pc.ontrack = (e) => setRemoteStream(e.streams[0]);
+        pc.ontrack = (e) => {
+            const stream = e.streams[0];
+            const videoTrack = stream.getVideoTracks()[0];
+
+            if (videoTrack) {
+                videoTrack.onended = () => {
+                    console.log("Remote video track ended");
+
+                    // Clear frozen
+                    setRemoteStream(null);
+                };
+
+                videoTrack.onmute = () => {
+                    console.log("Remote video muted");
+                    setRemoteStream(null);
+                };
+                videoTrack.onunmute = () => {
+                    console.log("Remote video resumed");
+                    setRemoteStream(new MediaStream(stream.getTracks()));
+                };
+            }
+            setRemoteStream(new MediaStream(stream.getTracks()));
+        }
 
         return pc;
     };
@@ -172,137 +225,153 @@ export function useCall(
 
     // ── Socket listeners ───────────────────────────────────
     useEffect(() => {
-    if (!socket) return;
+        if (!socket) return;
 
-    socket.on("incoming_call", async ({ from, type, callId, offer }) => {
-        const pc = new RTCPeerConnection(ICE_SERVERS);
-        pcRef.current = pc;
-        await pc.setRemoteDescription(offer);
+        socket.on("incoming_call", async ({ from, type, callId, offer }) => {
+            const pc = new RTCPeerConnection(ICE_SERVERS);
+            pcRef.current = pc;
+            await pc.setRemoteDescription(offer);
 
-        setCallInfo({ callId, from, to: username, type });
-        setCallState("receiving");
+            setCallInfo({ callId, from, to: username, type });
+            setCallState("receiving");
 
-        const missedTimer = setTimeout(() => {
-            if (callInfoRef.current?.callId === callId) {
-                
-                socketRef.current?.emit("end_call", {
-                    to: from,
-                    from: username,
-                    callId,
-                    callType: type,
-                    duration: 0,
-                });
+            const missedTimer = setTimeout(() => {
+                if (callInfoRef.current?.callId === callId) {
+                    
+                    socketRef.current?.emit("end_call", {
+                        to: from,
+                        from: username,
+                        callId,
+                        callType: type,
+                        duration: 0,
+                    });
 
-                onCallEvent?.({ type: "missed", callType: type, with: from, duration: 0 });
-                cleanup();
+                    onCallEvent?.({ type: "missed", callType: type, with: from, duration: 0 });
+                    cleanup();
+                }
+            }, 30000);
+            (window as any).__missedCallTimer = missedTimer;
+        });
+
+        socket.on("call_answered", async ({ answer }) => {
+            if (pcRef.current) {
+                await pcRef.current.setRemoteDescription(answer);
+                setCallState("connected");
+                callStartRef.current = Date.now();
             }
-        }, 30000);
-        (window as any).__missedCallTimer = missedTimer;
-    });
-
-    socket.on("call_answered", async ({ answer }) => {
-        if (pcRef.current) {
-            await pcRef.current.setRemoteDescription(answer);
-            setCallState("connected");
-            callStartRef.current = Date.now();
-        }
-    });
-
-    socket.on("ice_candidate", async ({ candidate }) => {
-        try {
-            if (pcRef.current) await pcRef.current.addIceCandidate(candidate);
-        } catch (e) {
-            console.warn("ICE candidate error:", e);
-        }
-    });
-
-    // Receiver side — caller already emitted call_message in endCall()
-    socket.on("call_ended", () => {
-        const info = callInfoRef.current;
-        const duration = callStartRef.current
-            ? Math.floor((Date.now() - callStartRef.current) / 1000)
-            : 0;
-        const otherUser =
-            info?.from === username ? info?.to : info?.from;
-
-        // ← NO call_message emit here
-        onCallEvent?.({
-            type:     "ended",
-            callType: info?.type ?? "voice",
-            with: otherUser ?? "",
-            duration,
-        });
-        callStartRef.current = null;
-        cleanup();
-    });
-
-    // Caller side — receiver already rejected, caller emits call_message
-    socket.on("call_rejected", () => {
-        const info = callInfoRef.current;
-        socketRef.current?.emit("end_call", {
-            to: info?.to ?? "",
-            from: username,
-            callId: info?.callId,
-            callType: info?.type ?? "voice",
-            duration: 0,
-            event: "rejected", // 🔥 optional improvement
-        });
-        onCallEvent?.({
-            type:     "rejected",
-            callType: info?.type ?? "voice",
-            with:     info?.to ?? "",
-            duration: 0,
-        });
-        cleanup();
-        alert("Call was declined.");
-    });
-
-    // Caller side — no answer timeout from server
-    socket.on("call_failed", ({ reason }) => {
-        const info = callInfoRef.current;
-        socketRef.current?.emit("end_call", {
-            to: info?.to ?? "",
-            from: username,
-            callId: info?.callId,
-            callType: info?.type ?? "voice",
-            duration: 0,
         });
 
-        onCallEvent?.({
-            type:     "missed",
-            callType: info?.type ?? "voice",
-            with:     info?.to ?? "",
-            duration: 0,
+        socket.on("ice_candidate", async ({ candidate }) => {
+            try {
+                if (pcRef.current) await pcRef.current.addIceCandidate(candidate);
+            } catch (e) {
+                console.warn("ICE candidate error:", e);
+            }
         });
-        cleanup();
-        alert(`Call failed: ${reason}`);
-    });
 
-    socket.on("call_renegotiate", async ({ offer }) => {
-        if (!pcRef.current || !socket) return;
-        const info = callInfoRef.current;
-        const to = info?.from === username ? info?.to : info?.from;
-        if (!to) return;
+        // Receiver side — caller already emitted call_message in endCall()
+        socket.on("call_ended", () => {
+            const info = callInfoRef.current;
+            const duration = callStartRef.current
+                ? Math.floor((Date.now() - callStartRef.current) / 1000)
+                : 0;
+            const otherUser =
+                info?.from === username ? info?.to : info?.from;
 
-        if (pcRef.current.signalingState !== "stable") {
-            console.warn("Ignoring renegotiate offer, wrong state:", pcRef.current.signalingState);
-            return;
-        }
+            // ← NO call_message emit here
+            onCallEvent?.({
+                type:     "ended",
+                callType: info?.type ?? "voice",
+                with: otherUser ?? "",
+                duration,
+            });
+            callStartRef.current = null;
+            cleanup();
+        });
 
-        await pcRef.current.setRemoteDescription(offer);
-        const answer = await pcRef.current.createAnswer();
-        await pcRef.current.setLocalDescription(answer);
-        socket.emit("call_renegotiate_answer", { to, answer });
-    });
+        // Caller side — receiver already rejected, caller emits call_message
+        socket.on("call_rejected", () => {
+            const info = callInfoRef.current;
+            socketRef.current?.emit("end_call", {
+                to: info?.to ?? "",
+                from: username,
+                callId: info?.callId,
+                callType: info?.type ?? "voice",
+                duration: 0,
+                event: "rejected", // 🔥 optional improvement
+            });
+            onCallEvent?.({
+                type:     "rejected",
+                callType: info?.type ?? "voice",
+                with:     info?.to ?? "",
+                duration: 0,
+            });
+            cleanup();
+            alert("Call was declined.");
+        });
 
-    socket.on("call_renegotiate_answer", async ({ answer }) => {
-        if (!pcRef.current) return;
-        if (pcRef.current.signalingState === "have-local-offer") {
-            await pcRef.current.setRemoteDescription(answer);
-        } else {
-            console.warn("Ignoring renegotiate answer, wrong state:", pcRef.current.signalingState);
-        }
-    });
+        // Caller side — no answer timeout from server
+        socket.on("call_failed", ({ reason }) => {
+            const info = callInfoRef.current;
+            socketRef.current?.emit("end_call", {
+                to: info?.to ?? "",
+                from: username,
+                callId: info?.callId,
+                callType: info?.type ?? "voice",
+                duration: 0,
+            });
+
+            onCallEvent?.({
+                type:     "missed",
+                callType: info?.type ?? "voice",
+                with:     info?.to ?? "",
+                duration: 0,
+            });
+            cleanup();
+            alert(`Call failed: ${reason}`);
+        });
+
+        socket.on("call_renegotiate", async ({ offer }) => {
+            if (!pcRef.current || !socket) return;
+            const info = callInfoRef.current;
+            const to = info?.from === username ? info?.to : info?.from;
+            if (!to) return;
+
+            if (pcRef.current.signalingState !== "stable") {
+                console.warn("Ignoring renegotiate offer, wrong state:", pcRef.current.signalingState);
+                return;
+            }
+
+            await pcRef.current.setRemoteDescription(offer);
+            const answer = await pcRef.current.createAnswer();
+            await pcRef.current.setLocalDescription(answer);
+            socket.emit("call_renegotiate_answer", { to, answer });
+        });
+
+        socket.on("call_renegotiate_answer", async ({ answer }) => {
+            if (!pcRef.current) return;
+            if (pcRef.current.signalingState === "have-local-offer") {
+                await pcRef.current.setRemoteDescription(answer);
+            } else {
+                console.warn("Ignoring renegotiate answer, wrong state:", pcRef.current.signalingState);
+            }
+        });
+
+        socket.on("screen_share_event", ({ event }) => {
+            setIsRemoteSharing(event === "started");
+
+            if (event === "stopped") {
+                clearRemoteVideo();
+            }
+        });
+
+        socket.on("camera_toggle", ({ isCamOff }) => {
+            setIsRemoteCamOff(isCamOff);
+
+            if (isCamOff) {
+                clearRemoteVideo();
+            }
+        });
 
         return () => {
             socket.off("incoming_call");
@@ -313,8 +382,12 @@ export function useCall(
             socket.off("call_failed");
             socket.off("call_renegotiate");
             socket.off("call_renegotiate_answer");
+            socket.off("screen_share_event");
+            socket.off("camera_toggle");
         };
     }, [socket, username]);
+
+
 
     // ── Start call ─────────────────────────────────────────
     const startCall = async (to: string, type: CallType) => {
@@ -364,7 +437,30 @@ export function useCall(
                     socket.emit("ice_candidate", { to: callInfo.from, candidate: e.candidate });
                 }
             };
-            pcRef.current.ontrack = (e) => setRemoteStream(e.streams[0]);
+            // pcRef.current.ontrack = (e) => setRemoteStream(e.streams[0]);
+            pcRef.current.ontrack = (e) => {
+                const stream = e.streams[0];
+                const videoTrack = stream.getVideoTracks()[0];
+
+                if (videoTrack) {
+                    videoTrack.onended = () => {
+                        console.log("Remote video ended");
+                        setRemoteStream(null);
+                    };
+
+                    videoTrack.onmute = () => {
+                        console.log("Remote video muted");
+                        setRemoteStream(null);
+                    };
+
+                    videoTrack.onunmute = () => {
+                        console.log("Remote video resumed");
+                        setRemoteStream(stream);
+                    };
+                }
+
+                setRemoteStream(stream);
+            };
 
             const answer = await pcRef.current.createAnswer();
             await pcRef.current.setLocalDescription(answer);
@@ -409,7 +505,6 @@ export function useCall(
         cleanup();
     };
 
-
     // ── Reject call ────────────────────────────────────────
     const rejectCall = () => {
         if ((window as any).__missedCallTimer) clearTimeout((window as any).__missedCallTimer);
@@ -433,21 +528,28 @@ export function useCall(
 
     // ── Toggle camera ──────────────────────────────────────
     const toggleCamera = async () => {
-        if (!pcRef.current || !localStream) return;
+        const pc = pcRef.current;
+
+        if (!pc || !localStream) return;
+
+        const sender = pc.getSenders().find(
+            (s) => s.track?.kind === "video"
+        );
 
         if (isCamOff) {
             try {
                 const videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
                 const videoTrack = videoStream.getVideoTracks()[0];
 
-                const sender = pcRef.current.getSenders().find((s) => s.track?.kind === "video");
                 if (sender) {
                     await sender.replaceTrack(videoTrack);
                 } else {
-                    pcRef.current.addTrack(videoTrack, localStream);
+                    pc.addTrack(videoTrack, localStream);
                 }
 
+                localStream.getVideoTracks().forEach(t => localStream.removeTrack(t));
                 localStream.addTrack(videoTrack);
+
                 setLocalStream(new MediaStream(localStream.getTracks()));
                 setIsCamOff(false);
                 setIsSharing(false);
@@ -458,119 +560,191 @@ export function useCall(
                 }
 
                 await renegotiate();
-            } catch (err) {
+
+                socketRef.current?.emit("camera_toggle", {
+                    to: callInfoRef.current?.to,
+                    from: username,
+                    isCamOff: false,
+                });
+
+            } catch {
                 alert("Could not access camera.");
             }
+
         } else {
+            // ✅ create black dummy track
+            const canvas = document.createElement("canvas");
+            canvas.width = 640;
+            canvas.height = 480;
+
+            const ctx = canvas.getContext("2d");
+
+            if (!ctx) {
+                throw new Error("Failed to get canvas context");
+            }
+
+            ctx.fillStyle = "black";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const stream = canvas.captureStream(5);
+            const track = stream.getVideoTracks()[0];
+
+            if (sender) {
+                await sender.replaceTrack(track);
+            }
+
             localStream.getVideoTracks().forEach((t) => {
                 t.stop();
                 localStream.removeTrack(t);
             });
-            const sender = pcRef.current.getSenders().find((s) => s.track?.kind === "video");
-            if (sender) await sender.replaceTrack(null);
+
             setLocalStream(new MediaStream(localStream.getTracks()));
             setIsCamOff(true);
 
             await renegotiate();
+
+            socketRef.current?.emit("camera_toggle", {
+                to: callInfoRef.current?.to,
+                from: username,
+                isCamOff: true,
+            });
         }
     };
 
     // ── Toggle screen share ────────────────────────────────
     const toggleScreenShare = async () => {
-        if (!pcRef.current || !localStream) return;
+        const pc = pcRef.current;
 
+        if (!pc || !localStream) {
+            console.warn("❌ PeerConnection not ready");
+            return;
+        }
+
+        const sender = pc.getSenders().find(
+            (s) => s.track?.kind === "video"
+        );
+
+        // ── STOP SHARING ─────────────────────────────
         if (isSharing) {
             if (screenTrackRef.current) {
                 screenTrackRef.current.stop();
                 screenTrackRef.current = null;
             }
-            const sender = pcRef.current.getSenders().find((s) => s.track?.kind === "video");
 
             if (!isCamOff) {
                 try {
                     const camStream = await navigator.mediaDevices.getUserMedia({ video: true });
                     const camTrack = camStream.getVideoTracks()[0];
+
                     if (sender) await sender.replaceTrack(camTrack);
-                    localStream.getVideoTracks().forEach((t) => localStream.removeTrack(t));
+
+                    localStream.getVideoTracks().forEach((t) => {
+                        localStream.removeTrack(t);
+                    });
+
                     localStream.addTrack(camTrack);
                     setLocalStream(new MediaStream(localStream.getTracks()));
-                    await renegotiate();
-                } catch {}
+                } catch (e) {
+                    console.warn("Camera restore failed", e);
+                }
             } else {
-                if (sender) await sender.replaceTrack(null);
+                // ❌ DO NOT USE replaceTrack(null)
+                // if (sender) await sender.replaceTrack(undefined as any);
+                if (sender) {
+                    const blackTrack = createBlackTrack();
+                    await sender.replaceTrack(blackTrack);
+                }
+
                 localStream.getVideoTracks().forEach((t) => {
                     t.stop();
                     localStream.removeTrack(t);
                 });
+
                 setLocalStream(new MediaStream(localStream.getTracks()));
-                await renegotiate();
             }
-            
+
+            await renegotiate();
+
             socketRef.current?.emit("screen_share_event", {
-            to: callInfoRef.current?.to,
-            from: username,
-            event: "stopped",
+                to: callInfoRef.current?.to,
+                from: username,
+                event: "stopped",
             });
 
             setIsSharing(false);
-        } else {
-            try {
-                const screenStream = await (navigator.mediaDevices as any).getDisplayMedia({
-                    video: true,
-                    audio: false,
-                });     
-                socketRef.current?.emit("screen_share_event", {
+            return;
+        }
+
+        // ── START SHARING ───────────────────────────
+        try {
+            const screenStream = await navigator.mediaDevices.getDisplayMedia({
+                video: true,
+                audio: false,
+            });
+
+            const screenTrack = screenStream.getVideoTracks()[0];
+            screenTrackRef.current = screenTrack;
+
+            if (sender) {
+                await sender.replaceTrack(screenTrack);
+            } else {
+                pc.addTrack(screenTrack, localStream);
+            }
+
+            localStream.getVideoTracks().forEach((t) => {
+                t.stop();
+                localStream.removeTrack(t);
+            });
+
+            localStream.addTrack(screenTrack);
+            setLocalStream(new MediaStream(localStream.getTracks()));
+            setIsSharing(true);
+            setIsCamOff(true);
+
+            await renegotiate();
+
+            socketRef.current?.emit("screen_share_event", {
                 to: callInfoRef.current?.to,
                 from: username,
                 event: "started",
-                });
+            });
 
-                const screenTrack = screenStream.getVideoTracks()[0];
-                screenTrackRef.current = screenTrack;
+            // ✅ handle manual stop (Chrome "Stop sharing")
+            screenTrack.onended = async () => {
+                console.log("✅ Screen track ended");
 
-                const sender = pcRef.current.getSenders().find((s) => s.track?.kind === "video");
-                if (sender) {
-                    await sender.replaceTrack(screenTrack);
-                } else {
-                    pcRef.current.addTrack(screenTrack, localStream);
-                }
-
-                localStream.getVideoTracks().forEach((t) => {
-                    t.stop();
-                    localStream.removeTrack(t);
-                });
-                localStream.addTrack(screenTrack);
-                setLocalStream(new MediaStream(localStream.getTracks()));
-                setIsSharing(true);
+                setIsSharing(false);
                 setIsCamOff(true);
+                screenTrackRef.current = null;
+
+                socketRef.current?.emit("screen_share_event", {
+                    to: callInfoRef.current?.to,
+                    from: username,
+                    event: "stopped",
+                });
+
+                // if (sender) {
+                //    await sender.replaceTrack(undefined as any); // safer than null
+                // }
+                if (sender) {
+                    const blackTrack = createBlackTrack();
+                    await sender.replaceTrack(blackTrack);
+                }
 
                 await renegotiate();
+            };
 
-                screenTrack.onended = async () => {
-                    setIsSharing(false);
-                    setIsCamOff(true);
-                    screenTrackRef.current = null;
-                    socketRef.current?.emit("screen_share_event", {
-                        to: callInfoRef.current?.to,
-                        from: username,
-                        event: "stopped",
-                    });
-
-                    const s = pcRef.current?.getSenders().find((s) => s.track?.kind === "video");
-                    if (s) await s.replaceTrack(null);
-                    await renegotiate();
-                };
-            } catch (err: any) {
-                if (
-                    err?.name === "NotAllowedError" ||
-                    err?.message?.includes("Permission denied") ||
-                    err?.message?.includes("cancelled")
-                ) {
-                    return;
-                }
-                console.warn("Screen share error:", err);
-                alert("Screen sharing failed. Please try again.");
+        } catch (err: any) {
+            if (
+                err?.name === "NotAllowedError" ||
+                err?.message?.includes("Permission denied") ||
+                err?.message?.includes("cancelled")
+            ) {
+                return;
             }
+
+            console.warn("Screen share error:", err);
+            alert("Screen sharing failed. Please try again.");
         }
     };
 

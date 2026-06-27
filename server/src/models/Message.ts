@@ -5,7 +5,11 @@ export interface IMessage extends Document {
   username: string;
   room: string;
 
-  reactions: { emoji: string; count: number; usernames: string[] }[];
+  reactions: {
+    emoji: string;
+    count: number;
+    usernames: string[];
+  }[];
 
   fileUrl?: string;
   fileName?: string;
@@ -15,8 +19,19 @@ export interface IMessage extends Document {
   audioUrl?: string;
   audioDuration?: number;
 
-  replyTo?: { _id: string; username: string; text: string };
+  replyTo?: {
+    _id: string;
+    username: string;
+    text: string;
+  };
+
   forwarded?: boolean;
+
+  type?: "text" | "call" | "screen_share" | "file" | "audio";
+  event?: "started" | "stopped";
+  callType?: "voice" | "video";
+  callEvent?: "ended" | "missed" | "rejected";
+  duration?: number;
 
   fromUsername?: string;
   caption?: string;
@@ -35,17 +50,22 @@ const reactionSchema = new Schema(
 const MessageSchema = new Schema<IMessage>(
   {
     text: { type: String, default: "" },
+
+    type: {
+      type: String,
+      enum: ["text", "call", "screen_share", "file", "audio"],
+      default: "text",
+    },
+
     username: { type: String, required: true },
     room: { type: String, required: true },
     reactions: { type: [reactionSchema], default: [] },
 
-    // For files sent via Cloudinary
     fileUrl: { type: String },
     fileName: { type: String },
     fileType: { type: String },
     isImage: { type: Boolean },
 
-    // Voice messages
     audioUrl: { type: String },
     audioDuration: { type: Number },
 
@@ -54,11 +74,21 @@ const MessageSchema = new Schema<IMessage>(
       username: { type: String },
       text: { type: String },
     },
+
     forwarded: { type: Boolean, default: false },
+
+    // Call-related
+    event: { type: String, enum: ["started", "stopped"] },
+    callType: { type: String, enum: ["voice", "video"] },
+    callEvent: { type: String, enum: ["ended", "missed", "rejected"] },
+    duration: { type: Number },
+
+    fromUsername: { type: String },
+    caption: { type: String },
   },
   { timestamps: true }
 );
 
-MessageSchema.index({ room: 1, createdAt: -1 });
+MessageSchema.index({ conversationId: 1, createdAt: -1 });
 
 export const Message = mongoose.model<IMessage>("Message", MessageSchema);

@@ -2,9 +2,7 @@ import { Server, Socket } from "socket.io";
 import { Message } from "../models/Message";
 
 export function registerReactionHandlers(io: Server, socket: Socket) {
-  socket.on(
-    "add_reaction",
-    async ({
+  socket.on( "add_reaction", async ({
       messageId,
       emoji,
       username,

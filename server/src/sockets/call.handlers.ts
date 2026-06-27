@@ -245,8 +245,18 @@ export function registerCallHandlers(io: Server, socket: Socket) {
     const toSocketId = getSocketId(to);
     const fromSocketId = getSocketId(from);
 
+
+    // Sent real time event
+    if ( toSocketId ) {
+      io.to(toSocketId).emit("screen_share_event", 
+        { from, event });
+    }
+    if (fromSocketId) {
+      io.to(fromSocketId).emit("screen_share_event", { from, event });
+    }
+
+    // Sent chat message real time
     if (toSocketId) io.to(toSocketId).emit("dm_receive", payload);
     if (fromSocketId) io.to(fromSocketId).emit("dm_receive", payload);
   });
-
 }

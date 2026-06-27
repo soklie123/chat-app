@@ -11,9 +11,9 @@ export default function AudioPlayer({
   audioDuration = 0,
   fromSelf,
 }: {
-  audioUrl:       string;
+  audioUrl: string;
   audioDuration?: number;
-  fromSelf:       boolean;
+  fromSelf: boolean;
 }) {
   const audioRef     = useRef<HTMLAudioElement | null>(null);
   const canvasRef    = useRef<HTMLCanvasElement | null>(null);
@@ -21,12 +21,15 @@ export default function AudioPlayer({
   const analyserRef  = useRef<AnalyserNode | null>(null);
   const sourceRef    = useRef<MediaElementAudioSourceNode | null>(null);
   const audioCtxRef  = useRef<AudioContext | null>(null);
-  const barsRef      = useRef<number[]>([]); // ← store static bar heights
+  const barsRef      = useRef<number[]>([]);
+  const ctxInitialized = useRef(false); // ← guard against double-init
 
-  const [playing,  setPlaying]  = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [duration, setDuration] = useState(audioDuration);
+  const [playing,     setPlaying]     = useState(false);
+  const [progress,    setProgress]    = useState(0);
+  const [duration,    setDuration]    = useState(audioDuration);
   const [currentTime, setCurrentTime] = useState(0);
+
+  // ── Draw helpers ──────────────────────────────────────────────────────────
 
   const drawBarsFromData = (heights: number[]) => {
     const canvas = canvasRef.current;
@@ -37,8 +40,8 @@ export default function AudioPlayer({
     const w = canvas.offsetWidth || 120;
     canvas.width  = w;
     canvas.height = 32;
-
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+
     const barWidth = 3;
     const barGap   = 2;
     const color    = fromSelf ? "#4ade80" : "#0088cc";
@@ -55,35 +58,30 @@ export default function AudioPlayer({
   };
 
   const generateStaticBars = () => {
-    const canvas   = canvasRef.current;
+    const canvas = canvasRef.current;
     if (!canvas) return;
     const w        = canvas.offsetWidth || 120;
     const barWidth = 3;
     const barGap   = 2;
     const count    = Math.floor(w / (barWidth + barGap));
-    // Generate random heights and store them
-    barsRef.current = Array.from({ length: count }, () =>
-      0.15 + Math.random() * 0.6
-    );
+    barsRef.current = Array.from({ length: count }, () => 0.15 + Math.random() * 0.6);
     drawBarsFromData(barsRef.current);
   };
 
-  // Draw static bars after canvas is in DOM
   useEffect(() => {
-    const timeout = setTimeout(() => generateStaticBars(), 50); // small delay ensures canvas is mounted
+    const timeout = setTimeout(() => generateStaticBars(), 50);
     return () => clearTimeout(timeout);
   }, []);
 
-  // Redraw on resize
   useEffect(() => {
     const obs = new ResizeObserver(() => {
-      if (!playing && barsRef.current.length > 0) {
-        drawBarsFromData(barsRef.current);
-      }
+      if (!playing && barsRef.current.length > 0) drawBarsFromData(barsRef.current);
     });
     if (canvasRef.current) obs.observe(canvasRef.current);
     return () => obs.disconnect();
   }, [playing]);
+
+  // ── Live waveform animation ───────────────────────────────────────────────
 
   const animate = () => {
     if (!analyserRef.current) return;
@@ -117,58 +115,93 @@ export default function AudioPlayer({
     animFrameRef.current = requestAnimationFrame(animate);
   };
 
+  // ── Audio context — initialised once, lazily ─────────────────────────────
+
+  const ensureAudioContext = () => {
+    const audio = audioRef.current;
+    if (!audio) return false;
+
+    // Guard: only create once even under React StrictMode double-invoke
+    if (ctxInitialized.current) return true;
+    ctxInitialized.current = true;
+
+    audioCtxRef.current = new AudioContext();
+    analyserRef.current = audioCtxRef.current.createAnalyser();
+    analyserRef.current.fftSize = 256;
+
+    sourceRef.current = audioCtxRef.current.createMediaElementSource(audio);
+    sourceRef.current.connect(analyserRef.current);
+    analyserRef.current.connect(audioCtxRef.current.destination);
+
+    return true;
+  };
+
+  // ── Play / Pause ──────────────────────────────────────────────────────────
+
   const togglePlay = async () => {
     const audio = audioRef.current;
     if (!audio) return;
-
-    if (!audioCtxRef.current) {
-      audioCtxRef.current = new AudioContext();
-      analyserRef.current = audioCtxRef.current.createAnalyser();
-      analyserRef.current.fftSize = 256;
-      sourceRef.current = audioCtxRef.current.createMediaElementSource(audio);
-      sourceRef.current.connect(analyserRef.current);
-      analyserRef.current.connect(audioCtxRef.current.destination);
-    }
 
     if (playing) {
       audio.pause();
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
       setPlaying(false);
-      drawBarsFromData(barsRef.current); // restore static bars
-    } else {
-      await audioCtxRef.current.resume();
+      drawBarsFromData(barsRef.current);
+      return;
+    }
+
+    // Init Web Audio on first play (requires user gesture)
+    ensureAudioContext();
+
+    try {
+      // Must resume BEFORE play — some browsers need this
+      await audioCtxRef.current!.resume();
       await audio.play();
       setPlaying(true);
       animate();
+    } catch (err) {
+      console.error("AudioPlayer play failed:", err);
     }
   };
 
+  // ── Cleanup on unmount ────────────────────────────────────────────────────
+
+  useEffect(() => {
+    return () => {
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+      audioCtxRef.current?.close();
+    };
+  }, []);
+
+  // ── Render ────────────────────────────────────────────────────────────────
+
   return (
     <div className="flex items-center gap-2 mt-1 min-w-[180px] max-w-[220px]">
+      {/* crossOrigin is required for Web Audio API on cross-origin URLs */}
       <audio
         ref={audioRef}
         src={audioUrl}
+        crossOrigin="anonymous"
         onTimeUpdate={() => {
-        const audio = audioRef.current;
-        if (audio) {
-            setCurrentTime(audio.currentTime); // ← add this
-            setProgress(audio.currentTime / (audio.duration || 1));
-        }
+          const audio = audioRef.current;
+          if (!audio) return;
+          setCurrentTime(audio.currentTime);
+          setProgress(audio.currentTime / (audio.duration || 1));
         }}
         onLoadedMetadata={() => {
           const audio = audioRef.current;
           if (audio && isFinite(audio.duration)) setDuration(audio.duration);
         }}
         onEnded={() => {
-            setPlaying(false);
-            setProgress(0);
-            setCurrentTime(0); // ← add this
-            if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-            drawBarsFromData(barsRef.current);
+          setPlaying(false);
+          setProgress(0);
+          setCurrentTime(0);
+          if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+          drawBarsFromData(barsRef.current);
         }}
       />
 
-      {/* Play/pause */}
+      {/* Play / Pause button */}
       <button
         onClick={togglePlay}
         className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 transition-colors ${
@@ -189,7 +222,7 @@ export default function AudioPlayer({
         )}
       </button>
 
-      {/* Waveform + progress */}
+      {/* Waveform canvas + progress bar */}
       <div className="flex-1 flex flex-col gap-1">
         <canvas
           ref={canvasRef}
@@ -213,7 +246,7 @@ export default function AudioPlayer({
         </div>
       </div>
 
-      {/* Duration */}
+      {/* Time display */}
       <span className={`text-[10px] tabular-nums flex-shrink-0 ${
         fromSelf ? "text-[#4a7a3a]" : "text-slate-400"
       }`}>

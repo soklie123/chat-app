@@ -14,7 +14,7 @@ async function sendSystemMessage(io: Server, roomId: string, text: string) {
     room: roomId,
     username: "system",
     text,
-    time: timeStr,
+    createdAt: timeStr,
   });
 
   const docId = (msg as { _id: unknown })._id;

@@ -52,6 +52,7 @@ export default function MessageList({
   onSeen,
   onReply,
   onForward,
+  onPinMessage,
   allUsers,
   onlineUsers,
   rooms,
@@ -65,6 +66,7 @@ export default function MessageList({
   onSeen?: (messageIds: string[]) => void;
   onReply: (msg: { _id: string; username: string; text: string }) => void;
   onForward: (text: string, fromUsername: string, to: string, isRoom: boolean) => void;
+  onPinMessage?: (messageId: string) => void;
   allUsers: string[];
   onlineUsers: string[];
   rooms: { id: string; name: string }[];
@@ -76,7 +78,6 @@ export default function MessageList({
   const [showJumpBtn, setShowJumpBtn] = useState(false);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
 
-  // ── Scroll position tracker ──
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -89,7 +90,6 @@ export default function MessageList({
     return () => el.removeEventListener("scroll", handleScroll);
   }, []);
 
-  // ── Smart auto-scroll: only jump if already near bottom ──
   useEffect(() => {
     if (!isNearBottomRef.current) return;
     const el = containerRef.current;
@@ -97,7 +97,6 @@ export default function MessageList({
     el.scrollTop = el.scrollHeight;
   }, [messages, typingUser]);
 
-  // ── Dismiss hover panel on touch outside ──
   useEffect(() => {
     const dismiss = (e: TouchEvent) => {
       const target = e.target as HTMLElement;
@@ -108,7 +107,6 @@ export default function MessageList({
     return () => document.removeEventListener("touchstart", dismiss);
   }, []);
 
-  // ── Mark messages as seen ──
   useEffect(() => {
     const unseenIds = messages
       .filter((m) => !m.fromSelf && m._id && m.status !== "seen")
@@ -125,7 +123,6 @@ export default function MessageList({
 
   return (
     <div className="flex-1 overflow-hidden relative">
-
       <div ref={containerRef} className="custom-scrollbar h-full overflow-y-auto px-5 py-4 bg-[#0e1621]">
 
         {/* Room divider */}
@@ -144,14 +141,14 @@ export default function MessageList({
             if (msg.callEvent) {
               return (
                 <div key={msg._id ?? i} className={`flex w-full ${msg.fromSelf ? "justify-end" : "justify-start"}`}>
-                    <CallEventBubble
-                        callEvent={msg.callEvent}
-                        callType={msg.callType ?? "voice"}
-                        callDuration={msg.callDuration}
-                        fromSelf={msg.fromSelf}
-                        username={msg.username}
-                        time={msg.time}
-                    />
+                  <CallEventBubble
+                    callEvent={msg.callEvent}
+                    callType={msg.callType ?? "voice"}
+                    callDuration={msg.callDuration}
+                    fromSelf={msg.fromSelf}
+                    username={msg.username}
+                    time={msg.time}
+                  />
                 </div>
               );
             }
@@ -172,6 +169,7 @@ export default function MessageList({
                     onForward={(text, fromUsername) =>
                       onForward(text, fromUsername, currentRoom, true)
                     }
+                    onPin={onPinMessage}
                     allUsers={allUsers}
                     onlineUsers={onlineUsers}
                     rooms={rooms}
@@ -190,15 +188,23 @@ export default function MessageList({
                       {msg.replyTo && <ReplyPreview replyTo={msg.replyTo} fromSelf={true} />}
                       {msg.text && <span className="whitespace-pre-wrap break-words block">{msg.text}</span>}
                       {msg.caption && <div className="text-[12px] text-[#d1d5db] mt-1 italic">{msg.caption}</div>}
-                      {msg.audioUrl &&
-                        <AudioPlayer 
-                          audioUrl={msg.audioUrl} 
+                      {msg.audioUrl && (
+                        <AudioPlayer
+                          audioUrl={msg.audioUrl}
                           audioDuration={typeof msg.audioDuration === "string"
                             ? parseFloat(msg.audioDuration)
-                            : (msg.audioDuration ?? 0)} 
-                          fromSelf={true} 
-                        />}
-                      {msg.fileUrl && <FilePreview fileUrl={msg.fileUrl} fileName={msg.fileName} fileType={msg.fileType} isImage={msg.isImage} />}
+                            : (msg.audioDuration ?? 0)}
+                          fromSelf={true}
+                        />
+                      )}
+                      {msg.fileUrl && (
+                        <FilePreview
+                          fileUrl={msg.fileUrl}
+                          fileName={msg.fileName}
+                          fileType={msg.fileType}
+                          isImage={msg.isImage}
+                        />
+                      )}
                       {msg.reactions && msg.reactions.length > 0 && (
                         <ReactionBubbles
                           reactions={msg.reactions}
@@ -238,6 +244,7 @@ export default function MessageList({
                     onReact={onReact}
                     onReply={onReply}
                     onForward={onForward}
+                    onPin={onPinMessage}
                     allUsers={allUsers}
                     onlineUsers={onlineUsers}
                     rooms={rooms}
@@ -256,16 +263,23 @@ export default function MessageList({
                       {msg.replyTo && <ReplyPreview replyTo={msg.replyTo} fromSelf={false} />}
                       {msg.text && <span className="whitespace-pre-wrap break-words block">{msg.text}</span>}
                       {msg.caption && <div className="text-[12px] text-[#9ca3af] mt-1 italic">{msg.caption}</div>}
-                      {msg.audioUrl && 
-                        <AudioPlayer 
-                          audioUrl={msg.audioUrl} 
+                      {msg.audioUrl && (
+                        <AudioPlayer
+                          audioUrl={msg.audioUrl}
                           audioDuration={typeof msg.audioDuration === "string"
                             ? parseFloat(msg.audioDuration)
-                            : (msg.audioDuration ?? 0)} 
-                          fromSelf={false} 
+                            : (msg.audioDuration ?? 0)}
+                          fromSelf={false}
                         />
-                      }
-                      {msg.fileUrl && <FilePreview fileUrl={msg.fileUrl} fileName={msg.fileName} fileType={msg.fileType} isImage={msg.isImage} />}
+                      )}
+                      {msg.fileUrl && (
+                        <FilePreview
+                          fileUrl={msg.fileUrl}
+                          fileName={msg.fileName}
+                          fileType={msg.fileType}
+                          isImage={msg.isImage}
+                        />
+                      )}
                       {msg.reactions && msg.reactions.length > 0 && (
                         <ReactionBubbles
                           reactions={msg.reactions}
@@ -306,7 +320,6 @@ export default function MessageList({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* ── Jump to Bottom button ── */}
       {showJumpBtn && (
         <button
           onClick={scrollToBottom}
@@ -318,7 +331,6 @@ export default function MessageList({
           </svg>
         </button>
       )}
-
     </div>
   );
 }

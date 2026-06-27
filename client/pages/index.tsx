@@ -16,16 +16,8 @@ import { RoomSummary } from "../hooks/useChat";
 
 type ReplyDraft = { _id: string; username: string; text: string } | null;
 type ForwardDraft = { text: string; fromUsername: string } | null;
-type SendFile = {
-  fileUrl: string;
-  fileName: string;
-  fileType: string;
-  isImage: boolean;
-};
-type AudioDraft = {
-  audioUrl: string;
-  audioDuration: number | string;
-};
+type SendFile = { fileUrl: string; fileName: string; fileType: string; isImage: boolean };
+type AudioDraft = { audioUrl: string; audioDuration: number | string };
 
 export default function Home() {
   const [username, setUsername] = useState("");
@@ -35,7 +27,7 @@ export default function Home() {
   };
 
   const {
-    socket, connected, onlineUsers, allUsers, rooms, createRoom, logout, userProfiles
+    socket, connected, onlineUsers, allUsers, rooms, logout, userProfiles,
   } = useChat(username);
 
   const {
@@ -57,27 +49,37 @@ export default function Home() {
     leaveGroup,
     deleteGroup,
     deleteRoomChat,
-    updateGroupAvatar, // ⬅️ needed to upload the avatar right after group creation
-    roomAvatars, // ⬅️ live avatarUrl-by-roomId, updated by the "group_avatar_updated" socket event
+    updateGroupAvatar,
+    roomAvatars,
+    pinnedMessages,
+    archivedRooms,
+    pinMessage,
+    archiveRoom,
   } = useRoom(socket, username);
 
-  // ── Merge live avatar updates into the rooms list ──
-  // `rooms` (from useChat) only gets a fresh avatarUrl when the server
-  // re-sends "room_list". `roomAvatars` (from useRoom) updates instantly
-  // when "group_avatar_updated" fires (e.g. right after group creation or
-  // a manual avatar change). Without this merge, a newly uploaded group
-  // photo never appears anywhere — Sidebar/RoomHeader/RoomView all read
-  // room.avatarUrl from `rooms`, not from `roomAvatars` directly.
+  // Merge live avatar updates into rooms list
   const mergedRooms: RoomSummary[] = rooms.map((r) =>
     roomAvatars[r.id] ? { ...r, avatarUrl: roomAvatars[r.id] } : r
   );
+
+  // Pinned room IDs — sidebar UI only, stored in local state
+  const [pinnedRoomIds, setPinnedRoomIds] = useState<Set<string>>(new Set());
+
+  const handlePinRoom = (roomId: string) => {
+    setPinnedRoomIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(roomId)) next.delete(roomId);
+      else next.add(roomId);
+      return next;
+    });
+  };
 
   const activeDMRef = useRef<string | null>(null);
   useEffect(() => {
     activeDMRef.current = activeDM;
   }, [activeDM]);
 
-  const { permission, notifyMessage, notifyDM, notifyRoom, notifyCall, notifyInvite } =
+  const { notifyMessage, notifyDM, notifyRoom, notifyCall, notifyInvite } =
     useNotifications(username);
   const { toasts, addToast, removeToast } = useToasts();
 
@@ -92,13 +94,11 @@ export default function Home() {
     if (!activeDMRef.current) openDM(withUser);
   });
 
-  // ── Incoming call notification (sound + toast), independent of DM/room message flow ──
   const lastNotifiedCallId = useRef<string | null>(null);
   useEffect(() => {
     if (callState !== "receiving" || !callInfo) return;
     if (lastNotifiedCallId.current === callInfo.callId) return;
     lastNotifiedCallId.current = callInfo.callId;
-
     notifyCall(callInfo.from, callInfo.type);
     addToast(callInfo.from, callInfo.type === "video" ? "Incoming video call" : "Incoming voice call", true, undefined, "call");
   }, [callState, callInfo, notifyCall, addToast]);
@@ -117,17 +117,9 @@ export default function Home() {
     openRoom(roomId);
   };
 
-  const handleForward = (
-    text: string,
-    fromUsername: string,
-    to: string,
-    isRoom: boolean
-  ) => {
-    if (isRoom) {
-      handleOpenRoom(to);
-    } else {
-      handleOpenDM(to);
-    }
+  const handleForward = (text: string, fromUsername: string, to: string, isRoom: boolean) => {
+    if (isRoom) handleOpenRoom(to);
+    else handleOpenDM(to);
     setTimeout(() => setForwardData({ text, fromUsername }), 200);
   };
 
@@ -136,21 +128,11 @@ export default function Home() {
     if (currentRoom) {
       sendRoomMessage(caption.trim() || forwardData.text);
     } else {
-      sendDM(
-        forwardData.text,
-        undefined,
-        undefined,
-        undefined,
-        true,
-        forwardData.fromUsername,
-        caption.trim()
-      );
+      sendDM(forwardData.text, undefined, undefined, undefined, true, forwardData.fromUsername, caption.trim());
     }
     setForwardData(null);
   };
 
-  // ── Watches incoming room/DM/conversation activity and fires toast + sound
-  //    only when the relevant chat isn't the one currently open & focused ──
   useUnseenNotifications({
     messages: roomMessages,
     dmMessages,
@@ -163,76 +145,54 @@ export default function Home() {
     addToast,
   });
 
-  // ── Group invite notification ──
   useEffect(() => {
     if (!socket) return;
-
     const onInvited = ({ groupName }: { groupName: string }) => {
       notifyInvite(groupName);
       addToast(groupName, "You were added to the group", false, groupName, "room");
     };
-
     socket.on("invited_to_group", onInvited);
-
-    return () => {
-      socket.off("invited_to_group", onInvited);
-    };
+    return () => { socket.off("invited_to_group", onInvited); };
   }, [socket, notifyInvite, addToast]);
 
- const handleCreateGroup = (name: string, members: string[], avatarFile?: File) => {
-  const roomId = name.trim().toLowerCase().replace(/\s+/g, "-");
-  if (!socket) {
-    console.error("[createGroup] no socket connection");
-    addToast("Error", "Not connected to the server. Try refreshing.", false, undefined, "room");
-    return;
-  }
-
-  const onCreated = async (createdRoomId: string) => {
-    if (createdRoomId !== roomId) return;
-    console.log("[createGroup] room_created received:", createdRoomId);
-    socket.off("room_created", onCreated);
-    clearTimeout(timeoutId);
-
-    if (members.length > 0) {
-      socket.emit("invite_to_group", { room: createdRoomId, users: members });
+  const handleCreateGroup = (name: string, members: string[], avatarFile?: File) => {
+    const roomId = name.trim().toLowerCase().replace(/\s+/g, "-");
+    if (!socket) {
+      addToast("Error", "Not connected to the server. Try refreshing.", false, undefined, "room");
+      return;
     }
 
-    // Upload the avatar BEFORE navigating into the room. Previously this ran
-    // in parallel with handleOpenRoom(), which is harmless on its own, but
-    // any upload failure (bad/missing token, server down, CORS) was only
-    // ever console.error'd — invisible in the UI, so it LOOKED like nothing
-    // happened. Awaiting it here lets us show a toast on failure instead.
-    if (avatarFile) {
-      console.log("[createGroup] uploading avatar for", createdRoomId, avatarFile.name);
-      try {
-        await updateGroupAvatar(createdRoomId, avatarFile);
-        console.log("[createGroup] avatar upload succeeded");
-      } catch (err) {
-        console.error("[createGroup] avatar upload FAILED:", err);
-        const message = err instanceof Error ? err.message : "Avatar upload failed";
-        addToast(createdRoomId, `Group created, but photo upload failed: ${message}`, false, createdRoomId, "room");
+    const onCreated = async (createdRoomId: string) => {
+      if (createdRoomId !== roomId) return;
+      socket.off("room_created", onCreated);
+      clearTimeout(timeoutId);
+
+      if (members.length > 0) {
+        socket.emit("invite_to_group", { room: createdRoomId, users: members });
       }
-    }
 
-    handleOpenRoom(createdRoomId);
+      if (avatarFile) {
+        try {
+          await updateGroupAvatar(createdRoomId, avatarFile);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : "Avatar upload failed";
+          addToast(createdRoomId, `Group created, but photo upload failed: ${message}`, false, createdRoomId, "room");
+        }
+      }
+
+      handleOpenRoom(createdRoomId);
+    };
+
+    socket.on("room_created", onCreated);
+
+    const timeoutId = setTimeout(() => {
+      socket.off("room_created", onCreated);
+      addToast("Error", "Group creation timed out. Check your connection and try again.", false, undefined, "room");
+    }, 5000);
+
+    socket.emit("create_room", name);
   };
 
-  // ⬇️ Listener attached BEFORE emit — eliminates the race
-  socket.on("room_created", onCreated);
-
-  // ⬇️ Safety net: if room_created never arrives, don't hang forever
-  const timeoutId = setTimeout(() => {
-    socket.off("room_created", onCreated);
-    console.error("[createGroup] timed out waiting for room_created for", roomId);
-    addToast("Error", "Group creation timed out. Check your connection and try again.", false, undefined, "room");
-  }, 5000);
-
-  socket.emit("create_room", name);
-};
-
-  // ── Add one or more members to an EXISTING group ──
-  // Reuses the same "invite_to_group" socket event the server already
-  // handles during group creation, so no server changes are required.
   const handleAddMembers = (roomId: string, members: string[]) => {
     if (!socket || members.length === 0) return;
     socket.emit("invite_to_group", { room: roomId, users: members });
@@ -243,10 +203,9 @@ export default function Home() {
     const normalizedAudio = audio
       ? {
           ...audio,
-          audioDuration:
-            typeof audio.audioDuration === "string"
-              ? Number(audio.audioDuration)
-              : audio.audioDuration,
+          audioDuration: typeof audio.audioDuration === "string"
+            ? Number(audio.audioDuration)
+            : audio.audioDuration,
         }
       : undefined;
 
@@ -255,7 +214,6 @@ export default function Home() {
       setRoomReplyTo(null);
       return;
     }
-
     sendDM(text ?? "", file, normalizedAudio, dmReplyTo ?? undefined);
     setDMReplyTo(null);
   };
@@ -265,12 +223,7 @@ export default function Home() {
       reactToRoomMessage(messageId, emoji);
       return;
     }
-    socket?.emit("add_dm_reaction", {
-      messageId,
-      emoji,
-      username,
-      to: activeDM,
-    });
+    socket?.emit("add_dm_reaction", { messageId, emoji, username, to: activeDM });
   };
 
   if (!username) return <AuthGate onAuthed={handleAuthed} />;
@@ -301,8 +254,10 @@ export default function Home() {
         onJoinRoom={handleOpenRoom}
       />
 
-      <div className="h-screen flex overflow-hidden bg-[#0e1621]" style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" }}>
-
+      <div
+        className="h-screen flex overflow-hidden bg-[#0e1621]"
+        style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" }}
+      >
         <Sidebar
           username={username}
           onLogout={() => { logout(); setUsername(""); }}
@@ -317,37 +272,45 @@ export default function Home() {
           onCreateGroup={handleCreateGroup}
           roomUnread={roomUnread}
           userProfiles={userProfiles}
+          archivedRooms={archivedRooms}
+          onArchiveRoom={archiveRoom}
+          pinnedRoomIds={pinnedRoomIds}
+          onPinRoom={handlePinRoom}
+          onLeaveGroup={leaveGroup}
+          onDeleteGroup={deleteGroup}
         />
 
         <div className="flex-1 flex flex-col overflow-hidden">
           {currentRoom ? (
-   <RoomView
-  currentRoom={currentRoom}
-  connected={connected}
-  allUsers={allUsers}
-  onlineUsers={onlineUsers}
-  currentUsername={username}
-  messages={roomMessages}
-  typingUser={roomTyping}
-  rooms={mergedRooms}
-  userProfiles={userProfiles}
-  onOpenDM={handleOpenDM}
-  onReact={handleReact}
-  onSeen={markRoomSeen}
-  replyTo={roomReplyTo}
-  setReplyTo={setRoomReplyTo}
-  forwardData={forwardData}
-  setForwardData={setForwardData}
-  sendForward={sendForward}
-  onSend={handleSend}
-  onTyping={emitRoomTyping}
-  onForward={handleForward}
-  onLeaveGroup={leaveGroup}
-  onDeleteGroup={deleteGroup}
-  onDeleteChat={deleteRoomChat}
-  onUpdateGroupAvatar={updateGroupAvatar}
-  onAddMembers={handleAddMembers}
-/>
+            <RoomView
+              currentRoom={currentRoom}
+              connected={connected}
+              allUsers={allUsers}
+              onlineUsers={onlineUsers}
+              currentUsername={username}
+              messages={roomMessages}
+              typingUser={roomTyping}
+              rooms={mergedRooms}
+              userProfiles={userProfiles}
+              onOpenDM={handleOpenDM}
+              onReact={handleReact}
+              onSeen={markRoomSeen}
+              replyTo={roomReplyTo}
+              setReplyTo={setRoomReplyTo}
+              forwardData={forwardData}
+              setForwardData={setForwardData}
+              sendForward={sendForward}
+              onSend={handleSend}
+              onTyping={emitRoomTyping}
+              onForward={handleForward}
+              onLeaveGroup={leaveGroup}
+              onDeleteGroup={deleteGroup}
+              onDeleteChat={deleteRoomChat}
+              onUpdateGroupAvatar={updateGroupAvatar}
+              onAddMembers={handleAddMembers}
+              pinnedMessages={pinnedMessages[currentRoom] ?? []}
+              onPinMessage={(msgId) => pinMessage(currentRoom, msgId)}
+            />
           ) : activeDM ? (
             <DMPanel
               currentUsername={username}
@@ -382,9 +345,7 @@ export default function Home() {
                 </svg>
               </div>
               <div className="text-center">
-                <div className="text-[20px] font-semibold text-[#8b98a5] mb-2">
-                  Select a chat
-                </div>
+                <div className="text-[20px] font-semibold text-[#8b98a5] mb-2">Select a chat</div>
                 <div className="text-[13.5px] text-[#4a5568] max-w-[240px] leading-relaxed">
                   Choose a conversation from the sidebar to start messaging
                 </div>

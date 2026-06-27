@@ -1,35 +1,25 @@
-
 import { useRef, useState } from "react";
 import { useLongPress } from "../../hooks/useLongPress";
 import ForwardPicker from "../shared/ForwardPicker";
-import { all } from "axios";
 
 const EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "😡"];
 
-// ── Hover Panel ───────────────────────────────────────
 export function HoverPanel({
-  msgId,
-  msgUsername,
-  msgText,
-  onReact,
-  onReply,
-  onForward,
-  align,
-  allUsers,
-  onlineUsers,
-  rooms,
-  currentUsername,
+  msgId, msgUsername, msgText,
+  onReact, onReply, onForward, onPin,
+  align, allUsers, onlineUsers, rooms, currentUsername,
 }: {
-  msgId?:         string;
-  msgUsername:    string;
-  msgText:        string;
-  onReact:        (messageId: string, emoji: string) => void;
-  onReply:        (msg: { _id: string; username: string; text: string }) => void;
-  onForward:      (text: string, fromUsername: string, to: string, isRoom: boolean) => void;
-  align:          "left" | "right";
+  msgId?: string;
+  msgUsername: string;
+  msgText: string;
+  onReact: (messageId: string, emoji: string) => void;
+  onReply: (msg: { _id: string; username: string; text: string }) => void;
+  onForward: (text: string, fromUsername: string, to: string, isRoom: boolean) => void;
+  onPin?: (messageId: string) => void;
+  align: "left" | "right";
   allUsers: string[];
-  onlineUsers:    string[];
-  rooms:          { id: string; name: string }[];
+  onlineUsers: string[];
+  rooms: { id: string; name: string }[];
   currentUsername: string;
 }) {
   const [emojiExpanded, setEmojiExpanded] = useState(false);
@@ -45,15 +35,11 @@ export function HoverPanel({
 
   return (
     <>
-    
       <div
-        className={`flex flex-col gap-1.5 ${
-                  align === "right" ? "items-end" : "items-start"
-                } mb-2 z-20 relative select-none animate-softFade`}
-
+        className={`flex flex-col gap-1.5 ${align === "right" ? "items-end" : "items-start"} mb-2 z-20 relative select-none animate-softFade`}
         data-hover-panel
       >
-        {/* Emoji Quick Reaction Panel Bar */}
+        {/* Emoji reaction bar */}
         <div className="flex items-center gap-1 p-1 bg-[#17212b] border border-[#101921] rounded-xl shadow-[0_4px_16px_rgba(0,0,0,0.4)] backdrop-blur-md">
           {emojiExpanded ? (
             <div className="flex items-center gap-0.5">
@@ -89,9 +75,8 @@ export function HoverPanel({
           )}
         </div>
 
-        {/* Telegram Core Quick Actions Bar Menu */}
+        {/* Actions bar */}
         <div className="flex items-center bg-[#17212b] border border-[#101921] rounded-xl shadow-[0_8px_24px_rgba(0,0,0,0.5)] overflow-hidden">
-          {/* Reply Action */}
           <button
             onMouseDown={(e) => {
               e.preventDefault();
@@ -101,39 +86,27 @@ export function HoverPanel({
             className="flex items-center gap-1.5 px-3 py-2 text-[12.5px] font-medium text-gray-300 hover:bg-[#202b36] hover:text-[#5288c1] transition-all"
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="9 17 4 12 9 7" />
-              <path d="M20 18v-2a4 4 0 0 0-4-4H4" />
+              <polyline points="9 17 4 12 9 7" /><path d="M20 18v-2a4 4 0 0 0-4-4H4" />
             </svg>
             Reply
           </button>
 
           <div className="w-[1px] h-4 bg-[#101921]" />
 
-          {/* Forward Action */}
           <button
-            onMouseDown={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              setShowPicker(true);
-            }}
+            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setShowPicker(true); }}
             className="flex items-center gap-1.5 px-3 py-2 text-[12.5px] font-medium text-gray-300 hover:bg-[#202b36] hover:text-[#5288c1] transition-all"
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="15 17 20 12 15 7" />
-              <path d="M4 18v-2a4 4 0 0 1 4-4h12" />
+              <polyline points="15 17 20 12 15 7" /><path d="M4 18v-2a4 4 0 0 1 4-4h12" />
             </svg>
             Forward
           </button>
 
           <div className="w-[1px] h-4 bg-[#101921]" />
 
-          {/* Copy Text Clipboard Action */}
           <button
-            onMouseDown={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              handleCopy();
-            }}
+            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); handleCopy(); }}
             className="flex items-center gap-1.5 px-3 py-2 text-[12.5px] font-medium text-gray-300 hover:bg-[#202b36] transition-all min-w-[72px] justify-center"
           >
             {copied ? (
@@ -148,10 +121,27 @@ export function HoverPanel({
               </div>
             )}
           </button>
+
+          {onPin && msgId && (
+            <>
+              <div className="w-[1px] h-4 bg-[#101921]" />
+              <button
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onPin(msgId);
+                }}
+                className="flex items-center gap-1.5 px-3 py-2 text-[12.5px] font-medium text-gray-300 hover:bg-[#202b36] hover:text-[#5288c1] transition-all"
+                title="Pin message"
+              >
+                📌
+                <span>Pin</span>
+              </button>
+            </>
+          )}
         </div>
       </div>
 
-      {/* Modern Forward Overlay Interface Modal Picker */}
       {showPicker && (
         <ForwardPicker
           text={msgText}
@@ -171,74 +161,63 @@ export function HoverPanel({
   );
 }
 
-// ── Message Bubble Container Wrapper ───────────────────
 export function MessageBubble({
-  id,
-  hoveredId,
-  setHoveredId,
-  fromSelf,
-  children,
-  msgId,
-  msgUsername,
-  msgText,
-  onReact,
-  onReply,
-  onForward,
-  allUsers,
-  onlineUsers,
-  rooms,
-  currentUsername,
+  id, hoveredId, setHoveredId, fromSelf, children,
+  msgId, msgUsername, msgText,
+  onReact, onReply, onForward, onPin,
+  allUsers, onlineUsers, rooms, currentUsername,
 }: {
-  id:           string;
-  hoveredId:    string | null;
+  id: string;
+  hoveredId: string | null;
   setHoveredId: React.Dispatch<React.SetStateAction<string | null>>;
-  fromSelf:     boolean;
-  children:     React.ReactNode;
-  msgId?:       string;
-  msgUsername:  string;
-  msgText:      string;
-  onReact:      (messageId: string, emoji: string) => void;
-  onReply:      (msg: { _id: string; username: string; text: string }) => void;
-  onForward:    (text: string, fromUsername: string, to: string, isRoom: boolean) => void;
+  fromSelf: boolean;
+  children: React.ReactNode;
+  msgId?: string;
+  msgUsername: string;
+  msgText: string;
+  onReact: (messageId: string, emoji: string) => void;
+  onReply: (msg: { _id: string; username: string; text: string }) => void;
+  onForward: (text: string, fromUsername: string, to: string, isRoom: boolean) => void;
+  onPin?: (messageId: string) => void;
   allUsers: string[];
-  onlineUsers:    string[];
-  rooms:          { id: string; name: string }[];
+  onlineUsers: string[];
+  rooms: { id: string; name: string }[];
   currentUsername: string;
 }) {
-  const longPress  = useLongPress(() => setHoveredId(id));
+  const longPress = useLongPress(() => setHoveredId(id));
   const leaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isHovered  = hoveredId === id;
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  
+  const isHovered = hoveredId === id;
+
+  // Double-click to pin
+  const lastClickTime = useRef<number>(0);
+  const handleClick = () => {
+    const now = Date.now();
+    if (now - lastClickTime.current < 300) {
+      if (onPin && msgId) onPin(msgId);
+    }
+    lastClickTime.current = now;
+  };
+
   return (
     <div className={`flex flex-col ${fromSelf ? "items-end" : "items-start"} w-full`}>
-      
       <div
         className="relative group w-fit"
-
+        onClick={handleClick}
         onMouseEnter={() => {
           if (leaveTimer.current) clearTimeout(leaveTimer.current);
-
-            hoverTimer.current = setTimeout(() => {
-              setHoveredId(id);
-          }, 150); // delay
+          hoverTimer.current = setTimeout(() => setHoveredId(id), 150);
         }}
-        onMouseLeave={() => {  
+        onMouseLeave={() => {
           if (hoverTimer.current) clearTimeout(hoverTimer.current);
-
-            leaveTimer.current = setTimeout(() => {
-              setHoveredId((cur) => (cur === id ? null : cur));
+          leaveTimer.current = setTimeout(() => {
+            setHoveredId((cur) => (cur === id ? null : cur));
           }, 200);
         }}
         {...longPress}
       >
-        {/* Absolute floating action display layer */}
         {isHovered && (
-          <div
-              className={`absolute top-0 ${
-                fromSelf ? "right-full mr-2" : "left-full ml-2"
-              }`}
-            >
+          <div className={`absolute top-0 ${fromSelf ? "right-full mr-2" : "left-full ml-2"}`}>
             <HoverPanel
               msgId={msgId}
               msgUsername={msgUsername}
@@ -246,6 +225,7 @@ export function MessageBubble({
               onReact={onReact}
               onReply={onReply}
               onForward={onForward}
+              onPin={onPin}
               align={fromSelf ? "right" : "left"}
               allUsers={allUsers}
               onlineUsers={onlineUsers}
@@ -254,8 +234,6 @@ export function MessageBubble({
             />
           </div>
         )}
-        
-        {/* Message Text Bubble Markup Child Element Render Node */}
         <div className="transition-transform duration-150 active:scale-[0.99] origin-left">
           {children}
         </div>
@@ -263,4 +241,3 @@ export function MessageBubble({
     </div>
   );
 }
-

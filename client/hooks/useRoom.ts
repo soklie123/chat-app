@@ -4,16 +4,8 @@ import { ChatMessage, TypingUser, Reaction } from "../types/chat";
 import { getAvatarColor } from "./useChat";
 import { getToken } from "../lib/api";
 
-type SendFile = {
-  fileUrl: string;
-  fileName: string;
-  fileType: string;
-  isImage: boolean;
-};
-type SendAudio = {
-  audioUrl: string;
-  audioDuration: number;
-};
+type SendFile = { fileUrl: string; fileName: string; fileType: string; isImage: boolean };
+type SendAudio = { audioUrl: string; audioDuration: number };
 type ReplyDraft = { _id: string; username: string; text: string } | null;
 
 type RawServerMessage = {
@@ -42,13 +34,12 @@ export function useRoom(socket: Socket | null, username: string) {
   const [hasMoreHistory, setHasMoreHistory] = useState(false);
   const [typingUser, setTypingUser] = useState<TypingUser | null>(null);
   const [roomUnread, setRoomUnread] = useState<Record<string, number>>({});
-  // Map of roomId → avatarUrl, updated live via socket events
   const [roomAvatars, setRoomAvatars] = useState<Record<string, string>>({});
+  const [pinnedMessages, setPinnedMessages] = useState<Record<string, ChatMessage[]>>({});
+  const [archivedRooms, setArchivedRooms] = useState<Set<string>>(new Set());
 
   const currentRoomRef = useRef<string | null>(null);
-  useEffect(() => {
-    currentRoomRef.current = currentRoom;
-  }, [currentRoom]);
+  useEffect(() => { currentRoomRef.current = currentRoom; }, [currentRoom]);
 
   const pendingTempIds = useRef<Set<string>>(new Set());
 
@@ -72,7 +63,6 @@ export function useRoom(socket: Socket | null, username: string) {
       const targetRoom = payload.roomId;
       if (!targetRoom) return;
 
-      // Bump unread for rooms not currently open (fallback for same-socket delivery)
       if (targetRoom !== currentRoomRef.current && payload.username !== username) {
         setRoomUnread((prev) => ({
           ...prev,
@@ -106,15 +96,10 @@ export function useRoom(socket: Socket | null, username: string) {
       });
     };
 
-    // ── Lightweight unread bump from server for background rooms ──
     const onUnreadBump = ({ roomId, username: fromUser }: { roomId: string; username: string }) => {
       if (fromUser === username) return;
       if (roomId === currentRoomRef.current) return;
-
-      setRoomUnread((prev) => ({
-        ...prev,
-        [roomId]: (prev[roomId] ?? 0) + 1,
-      }));
+      setRoomUnread((prev) => ({ ...prev, [roomId]: (prev[roomId] ?? 0) + 1 }));
     };
 
     const onUserTyping = (typingUsername: string) => {
@@ -177,27 +162,63 @@ export function useRoom(socket: Socket | null, username: string) {
     };
 
     const onRoomChatCleared = ({ roomId }: { roomId: string }) => {
-      if (currentRoomRef.current === roomId) {
-        setRoomMessages([]);
-      }
+      if (currentRoomRef.current === roomId) setRoomMessages([]);
     };
 
     const onGroupMemberLeft = (_: { roomId: string; username: string }) => {};
 
-    // ── Group avatar updated (live broadcast from server) ──
-    // This is the ONLY place roomAvatars gets written. It fires for every
-    // member currently in the room — including the creator's own browser
-    // tab, right after a successful upload — so this state is always the
-    // freshest known avatarUrl for a room, independent of room_list timing.
-    const onGroupAvatarUpdated = ({
+    const onGroupAvatarUpdated = ({ roomId, avatarUrl }: { roomId: string; avatarUrl: string }) => {
+      setRoomAvatars((prev) => ({ ...prev, [roomId]: avatarUrl }));
+    };
+
+    // ── Pinned messages ──
+    const onMessagePinned = ({
       roomId,
-      avatarUrl,
+      message,
     }: {
       roomId: string;
-      avatarUrl: string;
+      messageId: string;
+      message: RawServerMessage;
     }) => {
-      console.log("[useRoom] group_avatar_updated received:", roomId, avatarUrl);
-      setRoomAvatars((prev) => ({ ...prev, [roomId]: avatarUrl }));
+      if (!message) return;
+      setPinnedMessages((prev) => {
+        const existing = prev[roomId] ?? [];
+        if (existing.some((m) => m._id === message._id)) return prev;
+        return { ...prev, [roomId]: [...existing, toChatMessage(message, username)] };
+      });
+    };
+
+    const onMessageUnpinned = ({ roomId, messageId }: { roomId: string; messageId: string }) => {
+      setPinnedMessages((prev) => ({
+        ...prev,
+        [roomId]: (prev[roomId] ?? []).filter((m) => m._id !== messageId),
+      }));
+    };
+
+    const onPinnedMessages = ({
+      roomId,
+      messages,
+    }: {
+      roomId: string;
+      messages: RawServerMessage[];
+    }) => {
+      setPinnedMessages((prev) => ({
+        ...prev,
+        [roomId]: messages.map((m) => toChatMessage(m, username)),
+      }));
+    };
+
+    // ── Archived rooms ──
+    const onRoomArchived = ({ roomId }: { roomId: string }) => {
+      setArchivedRooms((prev) => new Set([...prev, roomId]));
+    };
+
+    const onRoomUnarchived = ({ roomId }: { roomId: string }) => {
+      setArchivedRooms((prev) => {
+        const next = new Set(prev);
+        next.delete(roomId);
+        return next;
+      });
     };
 
     socket.on("chat_history", onHistory);
@@ -215,8 +236,12 @@ export function useRoom(socket: Socket | null, username: string) {
     socket.on("room_chat_cleared", onRoomChatCleared);
     socket.on("group_member_left", onGroupMemberLeft);
     socket.on("group_avatar_updated", onGroupAvatarUpdated);
+    socket.on("message_pinned", onMessagePinned);
+    socket.on("message_unpinned", onMessageUnpinned);
+    socket.on("pinned_messages", onPinnedMessages);
+    socket.on("room_archived", onRoomArchived);
+    socket.on("room_unarchived", onRoomUnarchived);
 
-    // Surface server-side denials instead of silently doing nothing.
     const onAvatarDenied = (payload: { roomId: string; reason: string }) => {
       console.error("[useRoom] update_group_avatar_denied:", payload);
     };
@@ -238,27 +263,30 @@ export function useRoom(socket: Socket | null, username: string) {
       socket.off("room_chat_cleared", onRoomChatCleared);
       socket.off("group_member_left", onGroupMemberLeft);
       socket.off("group_avatar_updated", onGroupAvatarUpdated);
+      socket.off("message_pinned", onMessagePinned);
+      socket.off("message_unpinned", onMessageUnpinned);
+      socket.off("pinned_messages", onPinnedMessages);
+      socket.off("room_archived", onRoomArchived);
+      socket.off("room_unarchived", onRoomUnarchived);
       socket.off("update_group_avatar_denied", onAvatarDenied);
     };
   }, [socket, username]);
 
-  const openRoom = useCallback(
-    (roomId: string) => {
-      if (!socket || !roomId) return;
-      setRoomUnread((prev) => {
-        if (!prev[roomId]) return prev;
-        const next = { ...prev };
-        delete next[roomId];
-        return next;
-      });
-      if (currentRoomRef.current === roomId) return;
-      setRoomMessages([]);
-      setHasMoreHistory(false);
-      setTypingUser(null);
-      socket.emit("join_room", roomId);
-    },
-    [socket]
-  );
+  const openRoom = useCallback((roomId: string) => {
+    if (!socket || !roomId) return;
+    setRoomUnread((prev) => {
+      if (!prev[roomId]) return prev;
+      const next = { ...prev };
+      delete next[roomId];
+      return next;
+    });
+    if (currentRoomRef.current === roomId) return;
+    setRoomMessages([]);
+    setHasMoreHistory(false);
+    setTypingUser(null);
+    socket.emit("join_room", roomId);
+    socket.emit("get_pinned_messages", { roomId });
+  }, [socket]);
 
   const closeRoom = useCallback(() => {
     setCurrentRoom(null);
@@ -307,11 +335,8 @@ export function useRoom(socket: Socket | null, username: string) {
     (value: string) => {
       const roomId = currentRoomRef.current;
       if (!socket || !roomId) return;
-      if (value) {
-        socket.emit("typing", { username, roomId });
-      } else {
-        socket.emit("stop_typing", roomId);
-      }
+      if (value) socket.emit("typing", { username, roomId });
+      else socket.emit("stop_typing", roomId);
     },
     [socket, username]
   );
@@ -342,62 +367,54 @@ export function useRoom(socket: Socket | null, username: string) {
   );
 
   const leaveGroup = useCallback(
-    (roomId: string) => {
-      if (!socket || !roomId) return;
-      socket.emit("leave_group", { roomId });
-    },
+    (roomId: string) => { if (socket && roomId) socket.emit("leave_group", { roomId }); },
     [socket]
   );
 
   const deleteGroup = useCallback(
-    (roomId: string) => {
-      if (!socket || !roomId) return;
-      socket.emit("delete_group", { roomId });
-    },
+    (roomId: string) => { if (socket && roomId) socket.emit("delete_group", { roomId }); },
     [socket]
   );
 
   const deleteRoomChat = useCallback(
-    (roomId: string) => {
-      if (!socket || !roomId) return;
-      socket.emit("delete_room_chat", { roomId });
+    (roomId: string) => { if (socket && roomId) socket.emit("delete_room_chat", { roomId }); },
+    [socket]
+  );
+
+  const pinMessage = useCallback(
+    (roomId: string, messageId: string) => {
+      if (!socket || !roomId || !messageId) return;
+      socket.emit("pin_message", { roomId, messageId });
     },
     [socket]
   );
 
-  /**
-   * Upload a new group avatar image and notify all room members via socket.
-   * - Uploads the file to /upload REST endpoint → gets Cloudinary URL
-   * - Emits update_group_avatar to server which saves to DB + broadcasts group_avatar_updated
-   *
-   * IMPORTANT: this is awaited by callers (e.g. handleCreateGroup) so the
-   * caller can react to success/failure instead of it failing silently.
-   * Every failure path here throws a descriptive Error — never swallow it
-   * at the call site without at least console.error-ing it.
-   */
+  const archiveRoom = useCallback(
+    (roomId: string) => {
+      if (!socket || !roomId) return;
+      socket.emit("archive_room", { roomId });
+    },
+    [socket]
+  );
+
+  const getPinnedMessages = useCallback(
+    (roomId: string) => {
+      if (!socket || !roomId) return;
+      socket.emit("get_pinned_messages", { roomId });
+    },
+    [socket]
+  );
+
   const updateGroupAvatar = useCallback(
     async (roomId: string, file: File): Promise<void> => {
-      if (!socket) {
-        throw new Error("[updateGroupAvatar] no active socket connection");
-      }
-      if (!roomId || !file) {
-        throw new Error("[updateGroupAvatar] missing roomId or file");
-      }
+      if (!socket) throw new Error("[updateGroupAvatar] no active socket connection");
+      if (!roomId || !file) throw new Error("[updateGroupAvatar] missing roomId or file");
 
       const formData = new FormData();
       formData.append("file", file);
 
-      // Use the SAME token helper as the rest of the app (lib/api.ts) —
-      // do not read localStorage directly with a hardcoded key, since that
-      // silently desyncs if the storage key ever changes in one place.
       const token = getToken();
-      if (!token) {
-        throw new Error(
-          "[updateGroupAvatar] no auth token found — user may need to log in again"
-        );
-      }
-
-      console.log("[updateGroupAvatar] uploading", file.name, "for room", roomId);
+      if (!token) throw new Error("[updateGroupAvatar] no auth token found");
 
       let res: Response;
       try {
@@ -407,38 +424,20 @@ export function useRoom(socket: Socket | null, username: string) {
           body: formData,
         });
       } catch (networkErr) {
-        // fetch() itself throws on network failure / CORS rejection / server down —
-        // this is the most common silent-failure case (looks identical to "did
-        // nothing" in the UI unless we surface it).
-        console.error("[updateGroupAvatar] network error reaching /upload:", networkErr);
-        throw new Error(
-          "Could not reach the upload server. Is the backend running on port 4000?"
-        );
+        throw new Error("Could not reach the upload server. Is the backend running on port 4000?");
       }
-
-      console.log("[updateGroupAvatar] /upload response status:", res.status);
 
       if (!res.ok) {
         const errBody = await res.json().catch(() => ({}));
-        console.error("[updateGroupAvatar] upload failed:", res.status, errBody);
         throw new Error(
-          (errBody as { error?: string }).error ??
-            `Avatar upload failed (HTTP ${res.status})`
+          (errBody as { error?: string }).error ?? `Avatar upload failed (HTTP ${res.status})`
         );
       }
 
       const { url } = await res.json();
-      if (!url) {
-        console.error("[updateGroupAvatar] /upload succeeded but returned no url");
-        throw new Error("Upload succeeded but no image URL was returned");
-      }
-      console.log("[updateGroupAvatar] got cloudinary url:", url);
+      if (!url) throw new Error("Upload succeeded but no image URL was returned");
 
-      // Optimistically set it locally too, so the creator's own UI updates
-      // even if, for any reason, the server's broadcast back to this same
-      // socket is delayed.
       setRoomAvatars((prev) => ({ ...prev, [roomId]: url }));
-
       socket.emit("update_group_avatar", { roomId, avatarUrl: url });
     },
     [socket]
@@ -451,6 +450,8 @@ export function useRoom(socket: Socket | null, username: string) {
     typingUser,
     roomUnread,
     roomAvatars,
+    pinnedMessages,
+    archivedRooms,
     openRoom,
     closeRoom,
     sendRoomMessage,
@@ -462,6 +463,9 @@ export function useRoom(socket: Socket | null, username: string) {
     deleteGroup,
     deleteRoomChat,
     updateGroupAvatar,
+    pinMessage,
+    archiveRoom,
+    getPinnedMessages,
   };
 }
 

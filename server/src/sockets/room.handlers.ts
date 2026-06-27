@@ -4,7 +4,6 @@ import { Room } from "../models/Room";
 import { User } from "../models/User";
 import { onlineUsers, rooms, broadcastRoomList, getSocketId, SYSTEM_ROOMS } from "./state";
 
-// ── Helper: save + broadcast a system message ──────────
 async function sendSystemMessage(io: Server, roomId: string, text: string) {
   const timeStr = new Date().toLocaleTimeString([], {
     hour: "2-digit",
@@ -18,8 +17,6 @@ async function sendSystemMessage(io: Server, roomId: string, text: string) {
     time: timeStr,
   });
 
-  // msg._id always exists on a saved Mongoose doc; cast to access it safely
-  // when the model's inferred return type is too narrow.
   const docId = (msg as { _id: unknown })._id;
 
   io.to(roomId).emit("receive_message", {
@@ -72,7 +69,6 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
     await broadcastRoomList(io);
   });
 
-  // ── Join room ──────────────────────────────────────────
   socket.on("join_room", async (roomId: string) => {
     const username = onlineUsers.get(socket.id);
     if (!username || !roomId) return;
@@ -108,7 +104,6 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
     await broadcastRoomList(io);
   });
 
-  // ── Create group ───────────────────────────────────────
   socket.on("create_room", async (roomName: string) => {
     const username = onlineUsers.get(socket.id);
     if (!username || !roomName) return;
@@ -126,7 +121,6 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
     socket.emit("room_created", roomId);
   });
 
-  // ── Invite members ─────────────────────────────────────
   socket.on("invite_to_group", async ({ room, users }: { room: string; users: string[] }) => {
     const invitedBy = onlineUsers.get(socket.id);
     if (!invitedBy || !room || !users?.length) return;
@@ -165,7 +159,6 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
     await broadcastRoomList(io);
   });
 
-  // ── Leave group ────────────────────────────────────────
   socket.on("leave_group", async ({ roomId }: { roomId: string }) => {
     const username = onlineUsers.get(socket.id);
     if (!username || !roomId) return;
@@ -177,7 +170,6 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
 
     rooms.get(roomId)?.delete(username);
 
-    // Send BEFORE socket.leave so the leaver's socket still receives it
     await sendSystemMessage(io, roomId, `${username} left the group`);
 
     socket.leave(roomId);
@@ -194,7 +186,6 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
     await broadcastRoomList(io);
   });
 
-  // ── Delete group (creator only) ────────────────────────
   socket.on("delete_group", async ({ roomId }: { roomId: string }) => {
     const username = onlineUsers.get(socket.id);
     if (!username || !roomId) return;
@@ -215,7 +206,6 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
     await broadcastRoomList(io);
   });
 
-  // ── Delete room chat history ───────────────────────────
   socket.on("delete_room_chat", async ({ roomId }: { roomId: string }) => {
     const username = onlineUsers.get(socket.id);
     if (!username || !roomId) return;
@@ -231,7 +221,6 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
     }
   });
 
-  // ── Update group avatar ────────────────────────────────
   socket.on(
     "update_group_avatar",
     async ({ roomId, avatarUrl }: { roomId: string; avatarUrl: string }) => {
@@ -247,16 +236,11 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
       }
 
       await Room.findOneAndUpdate({ name: roomId }, { avatarUrl });
-
-      // Broadcast live update to all sockets currently in the room
       io.to(roomId).emit("group_avatar_updated", { roomId, avatarUrl });
-
-      // Refresh room list for all clients so persisted avatarUrl is included
       await broadcastRoomList(io);
     }
   );
 
-  // ── Pagination ─────────────────────────────────────────
   socket.on(
     "load_older_messages",
     async ({ room, before }: { room: string; before: string | Date }) => {
@@ -279,4 +263,62 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
       });
     }
   );
+
+  // ── Pin / unpin a message ──────────────────────────────
+  socket.on("pin_message", async ({ roomId, messageId }: { roomId: string; messageId: string }) => {
+    const username = onlineUsers.get(socket.id);
+    if (!username || !roomId || !messageId) return;
+
+    const roomDoc = await Room.findOne({ name: roomId });
+    if (!roomDoc || !roomDoc.members.includes(username)) return;
+
+    const alreadyPinned = (roomDoc.pinnedMessages ?? []).includes(messageId);
+
+    if (alreadyPinned) {
+      await Room.findOneAndUpdate({ name: roomId }, { $pull: { pinnedMessages: messageId } });
+      io.to(roomId).emit("message_unpinned", { roomId, messageId });
+    } else {
+      await Room.findOneAndUpdate({ name: roomId }, { $addToSet: { pinnedMessages: messageId } });
+      const msg = await Message.findById(messageId).lean();
+      io.to(roomId).emit("message_pinned", { roomId, messageId, message: msg });
+    }
+  });
+
+  // ── Get pinned messages for a room ────────────────────
+  socket.on("get_pinned_messages", async ({ roomId }: { roomId: string }) => {
+    const username = onlineUsers.get(socket.id);
+    if (!username || !roomId) return;
+
+    const roomDoc = await Room.findOne({ name: roomId });
+    if (!roomDoc || !roomDoc.members.includes(username)) return;
+
+    if (!roomDoc.pinnedMessages?.length) {
+      socket.emit("pinned_messages", { roomId, messages: [] });
+      return;
+    }
+
+    const msgs = await Message.find({ _id: { $in: roomDoc.pinnedMessages } }).lean();
+    socket.emit("pinned_messages", { roomId, messages: msgs });
+  });
+
+  // ── Archive / unarchive a room (per user) ─────────────
+  socket.on("archive_room", async ({ roomId }: { roomId: string }) => {
+    const username = onlineUsers.get(socket.id);
+    if (!username || !roomId) return;
+
+    const roomDoc = await Room.findOne({ name: roomId });
+    if (!roomDoc || !roomDoc.members.includes(username)) return;
+
+    const isArchived = (roomDoc.archivedBy ?? []).includes(username);
+
+    if (isArchived) {
+      await Room.findOneAndUpdate({ name: roomId }, { $pull: { archivedBy: username } });
+      socket.emit("room_unarchived", { roomId });
+    } else {
+      await Room.findOneAndUpdate({ name: roomId }, { $addToSet: { archivedBy: username } });
+      socket.emit("room_archived", { roomId });
+    }
+
+    await broadcastRoomList(io);
+  });
 }

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { ChatMessage, TypingUser } from "../../types/chat";
 import MessageList from "./MessageList";
 import InputBar from "../shared/InputBar";
@@ -50,6 +51,7 @@ export default function RoomView({
   forwardData, setForwardData, sendForward,
   onSend, onTyping, onForward,
   onLeaveGroup, onDeleteGroup, onDeleteChat, onUpdateGroupAvatar, onAddMembers,
+  pinnedMessages, onPinMessage,
 }: {
   currentRoom: string;
   connected: boolean;
@@ -76,8 +78,12 @@ export default function RoomView({
   onDeleteChat: (roomId: string) => void;
   onUpdateGroupAvatar?: (roomId: string, file: File) => void;
   onAddMembers?: (roomId: string, members: string[]) => void;
+  pinnedMessages: ChatMessage[];
+  onPinMessage: (messageId: string) => void;
 }) {
   const room = rooms.find((r) => r.id === currentRoom);
+  const [showPinnedList, setShowPinnedList] = useState(false);
+
   if (!room) return null;
 
   return (
@@ -97,9 +103,60 @@ export default function RoomView({
         onAddMembers={onAddMembers}
       />
 
+      {/* Pinned messages bar */}
+      {pinnedMessages.length > 0 && (
+        <div
+          className="shrink-0 bg-[#17212b] border-b border-[#0d1821] px-4 py-2 flex items-center gap-3 cursor-pointer hover:bg-[#1e2c3a] transition-colors"
+          onClick={() => setShowPinnedList((v) => !v)}
+        >
+          <div className="w-0.5 h-8 bg-[#5288c1] rounded-full shrink-0" />
+          <div className="flex-1 min-w-0">
+            <div className="text-[11px] text-[#5288c1] font-semibold mb-0.5">
+              📌 {pinnedMessages.length} Pinned Message{pinnedMessages.length > 1 ? "s" : ""}
+            </div>
+            <div className="text-[12px] text-[#8b98a5] truncate">
+              {pinnedMessages[pinnedMessages.length - 1]?.text || "📎 Attachment"}
+            </div>
+          </div>
+          <svg
+            width="14" height="14" viewBox="0 0 24 24" fill="none"
+            stroke="#6c7883" strokeWidth="2" strokeLinecap="round"
+            className={`shrink-0 transition-transform duration-200 ${showPinnedList ? "rotate-180" : ""}`}
+          >
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </div>
+      )}
+
+      {/* Expanded pinned list */}
+      {pinnedMessages.length > 0 && showPinnedList && (
+        <div className="shrink-0 bg-[#151e27] border-b border-[#0d1821] max-h-[200px] overflow-y-auto">
+          {pinnedMessages.map((msg) => (
+            <div
+              key={msg._id}
+              className="flex items-center gap-3 px-4 py-2.5 hover:bg-[#1e2c3a] transition-colors border-b border-[#0d1821]/50 last:border-0"
+            >
+              <span className="text-[#5288c1] text-sm shrink-0">📌</span>
+              <div className="flex-1 min-w-0">
+                <div className="text-[11px] text-[#5288c1] font-semibold mb-0.5">{msg.username}</div>
+                <div className="text-[12px] text-[#8b98a5] truncate">
+                  {msg.text || "📎 Attachment"}
+                </div>
+              </div>
+              <button
+                onClick={(e) => { e.stopPropagation(); onPinMessage(msg._id!); }}
+                className="shrink-0 w-6 h-6 flex items-center justify-center rounded-full text-[#6c7883] hover:text-red-400 hover:bg-red-400/10 transition-colors text-[12px]"
+                title="Unpin"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {messages.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center gap-3 select-none px-6">
-          {/* ── Empty state: gradient group icon instead of letter ── */}
           <div
             className="w-20 h-20 rounded-full flex items-center justify-center shadow-lg"
             style={{ background: room.avatarUrl ? undefined : getGroupGradient(room.name) }}
@@ -130,6 +187,7 @@ export default function RoomView({
           onSeen={onSeen}
           onReply={(msg) => setReplyTo(msg)}
           onForward={onForward}
+          onPinMessage={onPinMessage}
           allUsers={allUsers}
           onlineUsers={onlineUsers}
           rooms={rooms}

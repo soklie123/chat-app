@@ -1,6 +1,6 @@
 import { Server } from "socket.io";
 import { Room } from "../models/Room";
-import { User } from "../models/User"; // ← add this import
+import { User } from "../models/User";
 
 export const onlineUsers = new Map<string, string>();
 export const rooms = new Map<string, Set<string>>();
@@ -12,7 +12,6 @@ export const SYSTEM_ROOMS = [
 ];
 
 export async function seedRooms() {
-  // Get all existing users from DB
   const allUsers = await User.find({}, "username").lean();
   const allUsernames = allUsers.map((u) => u.username);
 
@@ -22,7 +21,6 @@ export async function seedRooms() {
       {
         name,
         createdBy: "system",
-        // Add ALL existing users as members
         $addToSet: { members: { $each: allUsernames } },
       },
       { upsert: true, returnDocument: "after" }
@@ -36,9 +34,7 @@ export async function broadcastRoomList(io: Server) {
   const dbRooms = await Room.find().sort({ createdAt: 1 });
 
   for (const [socketId, username] of onlineUsers.entries()) {
-    const userRooms = dbRooms.filter((r) =>
-      (r.members ?? []).includes(username)
-    );
+    const userRooms = dbRooms.filter((r) => (r.members ?? []).includes(username));
 
     const roomList = userRooms.map((r) => {
       const members = r.members ?? [];
@@ -48,6 +44,9 @@ export async function broadcastRoomList(io: Server) {
         memberCount: members.length,
         members,
         createdBy: r.createdBy,
+        avatarUrl: r.avatarUrl ?? "",
+        pinnedMessages: r.pinnedMessages ?? [],
+        archivedBy: r.archivedBy ?? [],
       };
     });
 

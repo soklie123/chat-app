@@ -5,6 +5,8 @@ export interface IRoom extends Document {
   createdBy: string;
   members: string[];
   avatarUrl?: string;
+  pinnedMessages: string[];
+  archivedBy: string[];
   createdAt: Date;
 }
 
@@ -14,6 +16,8 @@ const RoomSchema = new Schema<IRoom>(
     createdBy: { type: String, required: true },
     members: { type: [String], default: [] },
     avatarUrl: { type: String, default: "" },
+    pinnedMessages: { type: [String], default: [] },
+    archivedBy: { type: [String], default: [] },
   },
   { timestamps: true }
 );

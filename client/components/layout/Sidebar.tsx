@@ -8,8 +8,16 @@ import GroupIcon from "../shared/GroupIcon";
 import ProfilePanel from "./ProfilePanel";
 import UserProfileModal from "./UserProfileModal";
 import AIButton from "../shared/Aibutton";
+import ChatContextMenu from "../shared/ChatContextMenu";
 
-type RoomSummary = { id: string; name: string; memberCount: number; members: string[]; avatarUrl?: string };
+type RoomSummary = {
+  id: string;
+  name: string;
+  memberCount: number;
+  members: string[];
+  createdBy?: string;
+  avatarUrl?: string;
+};
 
 function getGroupGradient(name: string): string {
   const gradients = [
@@ -49,6 +57,12 @@ export default function Sidebar({
   onCreateGroup,
   roomUnread,
   userProfiles,
+  archivedRooms,
+  onArchiveRoom,
+  pinnedRoomIds,
+  onPinRoom,
+  onLeaveGroup,
+  onDeleteGroup,
 }: {
   username: string;
   onLogout: () => void;
@@ -63,6 +77,12 @@ export default function Sidebar({
   onCreateGroup: (name: string, members: string[], avatarFile?: File) => void;
   roomUnread: Record<string, number>;
   userProfiles: Record<string, UserProfile>;
+  archivedRooms: Set<string>;
+  onArchiveRoom: (roomId: string) => void;
+  pinnedRoomIds: Set<string>;
+  onPinRoom: (roomId: string) => void;
+  onLeaveGroup: (roomId: string) => void;
+  onDeleteGroup: (roomId: string) => void;
 }) {
   const [sidebarWidth, setSidebarWidth] = useState<number>(320);
   const minWidth = 220;
@@ -83,6 +103,13 @@ export default function Sidebar({
   const [searchQuery, setSearchQuery] = useState("");
   const [showProfile, setShowProfile] = useState(false);
   const [viewingUser, setViewingUser] = useState<string | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
+
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    roomId: string;
+  } | null>(null);
 
   const [avatarOverride, setAvatarOverride] = useState<string>("");
   const selfAvatarUrl = userProfiles[username]?.avatarUrl || avatarOverride;
@@ -130,18 +157,13 @@ export default function Sidebar({
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  // Close the create-group modal on Escape, like Telegram.
   useEffect(() => {
     if (!creatingGroup) return;
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setCreatingGroup(false);
-        resetGroupForm();
-      }
+      if (e.key === "Escape") { setCreatingGroup(false); resetGroupForm(); }
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [creatingGroup]);
 
   useEffect(() => {
@@ -212,18 +234,36 @@ export default function Sidebar({
     r.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // Users available to add while creating a brand-new group, filtered by the
-  // in-modal member search box.
   const creatableMembers = allUsers
     .filter((u) => u !== username)
     .filter((u) => u.toLowerCase().includes(memberSearch.toLowerCase()));
 
+  // Split rooms into pinned, normal, archived
+  const pinnedRooms = filteredRooms.filter(
+    (r) => pinnedRoomIds.has(r.id) && !archivedRooms.has(r.id)
+  );
+  const normalRooms = filteredRooms.filter(
+    (r) => !pinnedRoomIds.has(r.id) && !archivedRooms.has(r.id)
+  );
+  const archivedRoomList = filteredRooms.filter((r) => archivedRooms.has(r.id));
+
+  const contextRoom = contextMenu ? rooms.find((r) => r.id === contextMenu.roomId) : null;
+
   const renderRoomRow = (room: RoomSummary) => {
     const isActive = currentRoom === room.id;
     const unread = roomUnread[room.id] ?? 0;
+    const isPinned = pinnedRoomIds.has(room.id);
+    const isArchived = archivedRooms.has(room.id);
+
+    const handleContextMenu = (e: React.MouseEvent) => {
+      e.preventDefault();
+      setContextMenu({ x: e.clientX, y: e.clientY, roomId: room.id });
+    };
+
     return (
       <button
         key={room.id}
+        onContextMenu={handleContextMenu}
         onClick={() => onOpenRoom(room.id)}
         className={`w-full flex items-center gap-3 px-2.5 py-2 border-none rounded-xl cursor-pointer mb-px text-left transition-colors duration-150 ${
           isActive ? "bg-[#2b5278]" : "bg-transparent hover:bg-[#202b36]"
@@ -247,6 +287,12 @@ export default function Sidebar({
           <div className="flex items-center gap-1.5 min-w-0">
             <span className="text-[#6c7883] shrink-0"><GroupIcon size={13} /></span>
             <span className="text-[14.5px] font-semibold text-[#e8ecf0] truncate">{room.name}</span>
+            {isPinned && !isArchived && (
+              <span className="text-[10px] text-[#5288c1] shrink-0" title="Pinned">📌</span>
+            )}
+            {isArchived && (
+              <span className="text-[10px] text-[#6c7883] shrink-0" title="Archived">📥</span>
+            )}
           </div>
           <div className="text-[12px] text-[#6c7883] mt-px">
             {room.memberCount ?? room.members?.length ?? 0} members
@@ -316,7 +362,23 @@ export default function Sidebar({
         />
       )}
 
-      {/* ── Create Group — centered modal, Telegram-style ── */}
+      {/* Context Menu */}
+      {contextMenu && contextRoom && (
+        <ChatContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={() => setContextMenu(null)}
+          isPinned={pinnedRoomIds.has(contextMenu.roomId)}
+          isArchived={archivedRooms.has(contextMenu.roomId)}
+          isCreator={contextRoom.createdBy === username}
+          onPin={() => onPinRoom(contextMenu.roomId)}
+          onArchive={() => onArchiveRoom(contextMenu.roomId)}
+          onLeave={() => onLeaveGroup(contextMenu.roomId)}
+          onDelete={() => onDeleteGroup(contextMenu.roomId)}
+        />
+      )}
+
+      {/* Create Group Modal */}
       {creatingGroup && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
@@ -326,7 +388,6 @@ export default function Sidebar({
             className="bg-[#17212b] rounded-2xl shadow-2xl w-[420px] max-h-[85vh] flex flex-col border border-[#0d1821] overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Header */}
             <div className="flex items-center justify-between px-5 pt-5 pb-1 shrink-0">
               <div className="text-white font-bold text-[17px]">New group</div>
               <button
@@ -334,20 +395,16 @@ export default function Sidebar({
                 className="w-8 h-8 flex items-center justify-center rounded-full text-[#8b98a5] hover:bg-[#202b36] hover:text-white transition-colors"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
+                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
                 </svg>
               </button>
             </div>
 
-            {/* Body (scrollable) */}
             <div className="flex-1 overflow-y-auto custom-scrollbar px-5">
-              {/* Avatar + name */}
               <div className="flex items-center gap-3 py-3">
                 <button
                   onClick={() => groupAvatarInputRef.current?.click()}
                   className="relative w-16 h-16 rounded-full shrink-0 border-2 border-dashed border-[#4a5568] flex items-center justify-center cursor-pointer hover:border-[#5288c1] transition-colors group overflow-hidden"
-                  title="Add group photo"
                   style={{
                     background: groupAvatarPreview
                       ? "transparent"
@@ -387,12 +444,10 @@ export default function Sidebar({
                 </button>
               )}
 
-              {/* Members */}
               <div className="text-[11px] text-[#5288c1] font-bold uppercase tracking-[0.08em] mt-3 mb-2">
                 Add members{selectedMembers.length > 0 ? ` · ${selectedMembers.length}` : ""}
               </div>
 
-              {/* Selected chips */}
               {selectedMembers.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 mb-2">
                   {selectedMembers.map((m) => (
@@ -452,7 +507,6 @@ export default function Sidebar({
               </div>
             </div>
 
-            {/* Footer */}
             <div className="flex gap-2 px-5 py-4 shrink-0 border-t border-[#0d1821]">
               <button onClick={() => { setCreatingGroup(false); resetGroupForm(); }} className="flex-1 py-2.5 bg-[#202b36] border-none rounded-xl text-[#8b98a5] text-[13.5px] cursor-pointer transition-colors duration-150 hover:bg-[#2c3e50]">
                 Cancel
@@ -471,11 +525,7 @@ export default function Sidebar({
 
       <div
         className="h-full bg-[#17212b] flex flex-col shrink-0 border-r border-[#0d1821] text-white relative"
-        style={{
-          width: sidebarWidth,
-          fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-          WebkitFontSmoothing: "antialiased",
-        }}
+        style={{ width: sidebarWidth, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif", WebkitFontSmoothing: "antialiased" }}
       >
         {/* Resize handle */}
         <div
@@ -492,9 +542,7 @@ export default function Sidebar({
           <div className="relative" ref={menuRef}>
             <button
               onClick={() => setShowMenu((v) => !v)}
-              className={`w-[38px] h-[38px] flex items-center justify-center rounded-full border-none text-[#8b98a5] cursor-pointer shrink-0 transition-colors duration-150 hover:bg-[#202b36] ${
-                showMenu ? "bg-[#202b36]" : "bg-transparent"
-              }`}
+              className={`w-[38px] h-[38px] flex items-center justify-center rounded-full border-none text-[#8b98a5] cursor-pointer shrink-0 transition-colors duration-150 hover:bg-[#202b36] ${showMenu ? "bg-[#202b36]" : "bg-transparent"}`}
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
                 <line x1="4" y1="7" x2="20" y2="7" />
@@ -551,7 +599,6 @@ export default function Sidebar({
             )}
           </div>
 
-          {/* Search */}
           <div className="flex-1 relative flex items-center">
             <svg className="absolute left-2.5 pointer-events-none text-[#6c7883]" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
               <circle cx="11" cy="11" r="8" />
@@ -568,13 +615,62 @@ export default function Sidebar({
 
         {/* List */}
         <div className="flex-1 overflow-y-auto custom-scrollbar px-1.5 py-1">
-          {filteredRooms.length > 0 && <>{filteredRooms.map(renderRoomRow)}</>}
-          {filteredConversations.length > 0 && (
-            <DMList conversations={filteredConversations} activeDM={activeDM} onOpen={onOpenDM} onlineUsers={onlineUsers} userProfiles={userProfiles} />
+          {/* Pinned rooms */}
+          {pinnedRooms.length > 0 && (
+            <>
+              <div className="px-3 py-1 text-[10px] text-[#5288c1] font-bold uppercase tracking-widest">
+                📌 Pinned
+              </div>
+              {pinnedRooms.map(renderRoomRow)}
+              <div className="h-px bg-[#0d1821] mx-2 my-1" />
+            </>
           )}
+
+          {/* Normal rooms */}
+          {normalRooms.map(renderRoomRow)}
+
+          {/* DM conversations */}
+          {filteredConversations.length > 0 && (
+            <DMList
+              conversations={filteredConversations}
+              activeDM={activeDM}
+              onOpen={onOpenDM}
+              onlineUsers={onlineUsers}
+              userProfiles={userProfiles}
+            />
+          )}
+
           {filteredOnline.length > 0 && <>{filteredOnline.map((u) => renderUserRow(u, true))}</>}
           {filteredOffline.length > 0 && <>{filteredOffline.map((u) => renderUserRow(u, false))}</>}
-          {filteredRooms.length === 0 && filteredConversations.length === 0 && filteredOnline.length === 0 && filteredOffline.length === 0 && (
+
+          {/* Archived section */}
+          {archivedRoomList.length > 0 && (
+            <>
+              <div className="h-px bg-[#0d1821] mx-2 my-1" />
+              <button
+                onClick={() => setShowArchived((v) => !v)}
+                className="w-full flex items-center gap-2.5 px-3 py-2 text-[13px] text-[#6c7883] hover:bg-[#202b36] rounded-xl transition-colors"
+              >
+                <span>📥</span>
+                <span className="flex-1 text-left">
+                  Archived Chats
+                  <span className="ml-1.5 text-[11px] text-[#5288c1] font-semibold">
+                    {archivedRoomList.length}
+                  </span>
+                </span>
+                <svg
+                  width="12" height="12" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
+                  className={`transition-transform duration-200 ${showArchived ? "rotate-180" : ""}`}
+                >
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </button>
+              {showArchived && archivedRoomList.map(renderRoomRow)}
+            </>
+          )}
+
+          {pinnedRooms.length === 0 && normalRooms.length === 0 && filteredConversations.length === 0 && filteredOnline.length === 0 && filteredOffline.length === 0 && (
             <div className="px-4 py-12 text-center text-[#4a5568] text-[13px]">
               {searchQuery ? "No results found" : "No users yet"}
             </div>

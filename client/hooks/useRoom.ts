@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { Socket } from "socket.io-client";
 import { ChatMessage, TypingUser, Reaction } from "../types/chat";
 import { getAvatarColor } from "./useChat";
+import { getToken } from "../lib/api";
 
 type SendFile = {
   fileUrl: string;
@@ -184,6 +185,10 @@ export function useRoom(socket: Socket | null, username: string) {
     const onGroupMemberLeft = (_: { roomId: string; username: string }) => {};
 
     // ── Group avatar updated (live broadcast from server) ──
+    // This is the ONLY place roomAvatars gets written. It fires for every
+    // member currently in the room — including the creator's own browser
+    // tab, right after a successful upload — so this state is always the
+    // freshest known avatarUrl for a room, independent of room_list timing.
     const onGroupAvatarUpdated = ({
       roomId,
       avatarUrl,
@@ -191,6 +196,7 @@ export function useRoom(socket: Socket | null, username: string) {
       roomId: string;
       avatarUrl: string;
     }) => {
+      console.log("[useRoom] group_avatar_updated received:", roomId, avatarUrl);
       setRoomAvatars((prev) => ({ ...prev, [roomId]: avatarUrl }));
     };
 
@@ -210,6 +216,12 @@ export function useRoom(socket: Socket | null, username: string) {
     socket.on("group_member_left", onGroupMemberLeft);
     socket.on("group_avatar_updated", onGroupAvatarUpdated);
 
+    // Surface server-side denials instead of silently doing nothing.
+    const onAvatarDenied = (payload: { roomId: string; reason: string }) => {
+      console.error("[useRoom] update_group_avatar_denied:", payload);
+    };
+    socket.on("update_group_avatar_denied", onAvatarDenied);
+
     return () => {
       socket.off("chat_history", onHistory);
       socket.off("older_messages", onOlder);
@@ -226,6 +238,7 @@ export function useRoom(socket: Socket | null, username: string) {
       socket.off("room_chat_cleared", onRoomChatCleared);
       socket.off("group_member_left", onGroupMemberLeft);
       socket.off("group_avatar_updated", onGroupAvatarUpdated);
+      socket.off("update_group_avatar_denied", onAvatarDenied);
     };
   }, [socket, username]);
 
@@ -356,31 +369,76 @@ export function useRoom(socket: Socket | null, username: string) {
    * Upload a new group avatar image and notify all room members via socket.
    * - Uploads the file to /upload REST endpoint → gets Cloudinary URL
    * - Emits update_group_avatar to server which saves to DB + broadcasts group_avatar_updated
+   *
+   * IMPORTANT: this is awaited by callers (e.g. handleCreateGroup) so the
+   * caller can react to success/failure instead of it failing silently.
+   * Every failure path here throws a descriptive Error — never swallow it
+   * at the call site without at least console.error-ing it.
    */
   const updateGroupAvatar = useCallback(
     async (roomId: string, file: File): Promise<void> => {
-      if (!socket || !roomId || !file) return;
+      if (!socket) {
+        throw new Error("[updateGroupAvatar] no active socket connection");
+      }
+      if (!roomId || !file) {
+        throw new Error("[updateGroupAvatar] missing roomId or file");
+      }
 
       const formData = new FormData();
       formData.append("file", file);
 
-      const token =
-        typeof window !== "undefined"
-          ? localStorage.getItem("chatapp_token")
-          : null;
+      // Use the SAME token helper as the rest of the app (lib/api.ts) —
+      // do not read localStorage directly with a hardcoded key, since that
+      // silently desyncs if the storage key ever changes in one place.
+      const token = getToken();
+      if (!token) {
+        throw new Error(
+          "[updateGroupAvatar] no auth token found — user may need to log in again"
+        );
+      }
 
-      const res = await fetch("http://localhost:4000/upload", {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: formData,
-      });
+      console.log("[updateGroupAvatar] uploading", file.name, "for room", roomId);
+
+      let res: Response;
+      try {
+        res = await fetch("http://localhost:4000/upload", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: formData,
+        });
+      } catch (networkErr) {
+        // fetch() itself throws on network failure / CORS rejection / server down —
+        // this is the most common silent-failure case (looks identical to "did
+        // nothing" in the UI unless we surface it).
+        console.error("[updateGroupAvatar] network error reaching /upload:", networkErr);
+        throw new Error(
+          "Could not reach the upload server. Is the backend running on port 4000?"
+        );
+      }
+
+      console.log("[updateGroupAvatar] /upload response status:", res.status);
 
       if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error((err as any).error ?? "Avatar upload failed");
+        const errBody = await res.json().catch(() => ({}));
+        console.error("[updateGroupAvatar] upload failed:", res.status, errBody);
+        throw new Error(
+          (errBody as { error?: string }).error ??
+            `Avatar upload failed (HTTP ${res.status})`
+        );
       }
 
       const { url } = await res.json();
+      if (!url) {
+        console.error("[updateGroupAvatar] /upload succeeded but returned no url");
+        throw new Error("Upload succeeded but no image URL was returned");
+      }
+      console.log("[updateGroupAvatar] got cloudinary url:", url);
+
+      // Optimistically set it locally too, so the creator's own UI updates
+      // even if, for any reason, the server's broadcast back to this same
+      // socket is delayed.
+      setRoomAvatars((prev) => ({ ...prev, [roomId]: url }));
+
       socket.emit("update_group_avatar", { roomId, avatarUrl: url });
     },
     [socket]

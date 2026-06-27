@@ -26,6 +26,7 @@ export type RoomSummary = {
   members: string[];
   createdBy: string;
   unread: number;
+  avatarUrl?: string;       
   lastMessage?: string;
   lastMessageFrom?: string;
   lastMessageTime?: string;

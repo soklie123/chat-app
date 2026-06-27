@@ -47,7 +47,7 @@ export default function Home() {
     currentRoom,
     roomMessages,
     typingUser: roomTyping,
-    roomUnread,           // ← destructure roomUnread here
+    roomUnread,
     openRoom,
     closeRoom,
     sendRoomMessage,
@@ -57,7 +57,20 @@ export default function Home() {
     leaveGroup,
     deleteGroup,
     deleteRoomChat,
+    updateGroupAvatar, // ⬅️ needed to upload the avatar right after group creation
+    roomAvatars, // ⬅️ live avatarUrl-by-roomId, updated by the "group_avatar_updated" socket event
   } = useRoom(socket, username);
+
+  // ── Merge live avatar updates into the rooms list ──
+  // `rooms` (from useChat) only gets a fresh avatarUrl when the server
+  // re-sends "room_list". `roomAvatars` (from useRoom) updates instantly
+  // when "group_avatar_updated" fires (e.g. right after group creation or
+  // a manual avatar change). Without this merge, a newly uploaded group
+  // photo never appears anywhere — Sidebar/RoomHeader/RoomView all read
+  // room.avatarUrl from `rooms`, not from `roomAvatars` directly.
+  const mergedRooms: RoomSummary[] = rooms.map((r) =>
+    roomAvatars[r.id] ? { ...r, avatarUrl: roomAvatars[r.id] } : r
+  );
 
   const activeDMRef = useRef<string | null>(null);
   useEffect(() => {
@@ -76,7 +89,6 @@ export default function Home() {
   } = useCall(socket, username, (event) => {
     const withUser = event.with || activeDMRef.current || "";
     if (!withUser) return;
-    // addCallEventMessage(event.type, event.callType, withUser, event.duration, event.type !== "missed");
     if (!activeDMRef.current) openDM(withUser);
   });
 
@@ -167,24 +179,63 @@ export default function Home() {
     };
   }, [socket, notifyInvite, addToast]);
 
-  const handleCreateGroup = (name: string, members: string[]) => {
-    const roomId = name.trim().toLowerCase().replace(/\s+/g, "-");
+ const handleCreateGroup = (name: string, members: string[], avatarFile?: File) => {
+  const roomId = name.trim().toLowerCase().replace(/\s+/g, "-");
+  if (!socket) {
+    console.error("[createGroup] no socket connection");
+    addToast("Error", "Not connected to the server. Try refreshing.", false, undefined, "room");
+    return;
+  }
 
-    if (socket) {
-      const onCreated = (createdRoomId: string) => {
-        if (createdRoomId !== roomId) return;
-        socket.off("room_created", onCreated);
-        handleOpenRoom(createdRoomId);
-        if (members.length > 0) {
-          setTimeout(() => {
-            socket.emit("invite_to_group", { room: createdRoomId, users: members });
-          }, 300);
-        }
-      };
-      socket.on("room_created", onCreated);
+  const onCreated = async (createdRoomId: string) => {
+    if (createdRoomId !== roomId) return;
+    console.log("[createGroup] room_created received:", createdRoomId);
+    socket.off("room_created", onCreated);
+    clearTimeout(timeoutId);
+
+    if (members.length > 0) {
+      socket.emit("invite_to_group", { room: createdRoomId, users: members });
     }
 
-    createRoom(name);
+    // Upload the avatar BEFORE navigating into the room. Previously this ran
+    // in parallel with handleOpenRoom(), which is harmless on its own, but
+    // any upload failure (bad/missing token, server down, CORS) was only
+    // ever console.error'd — invisible in the UI, so it LOOKED like nothing
+    // happened. Awaiting it here lets us show a toast on failure instead.
+    if (avatarFile) {
+      console.log("[createGroup] uploading avatar for", createdRoomId, avatarFile.name);
+      try {
+        await updateGroupAvatar(createdRoomId, avatarFile);
+        console.log("[createGroup] avatar upload succeeded");
+      } catch (err) {
+        console.error("[createGroup] avatar upload FAILED:", err);
+        const message = err instanceof Error ? err.message : "Avatar upload failed";
+        addToast(createdRoomId, `Group created, but photo upload failed: ${message}`, false, createdRoomId, "room");
+      }
+    }
+
+    handleOpenRoom(createdRoomId);
+  };
+
+  // ⬇️ Listener attached BEFORE emit — eliminates the race
+  socket.on("room_created", onCreated);
+
+  // ⬇️ Safety net: if room_created never arrives, don't hang forever
+  const timeoutId = setTimeout(() => {
+    socket.off("room_created", onCreated);
+    console.error("[createGroup] timed out waiting for room_created for", roomId);
+    addToast("Error", "Group creation timed out. Check your connection and try again.", false, undefined, "room");
+  }, 5000);
+
+  socket.emit("create_room", name);
+};
+
+  // ── Add one or more members to an EXISTING group ──
+  // Reuses the same "invite_to_group" socket event the server already
+  // handles during group creation, so no server changes are required.
+  const handleAddMembers = (roomId: string, members: string[]) => {
+    if (!socket || members.length === 0) return;
+    socket.emit("invite_to_group", { room: roomId, users: members });
   };
 
   const handleSend = (text: string, file?: SendFile, audio?: AudioDraft) => {
@@ -259,18 +310,18 @@ export default function Home() {
           allUsers={allUsers}
           conversations={conversations}
           activeDM={activeDM}
-          rooms={rooms}
+          rooms={mergedRooms}
           currentRoom={currentRoom}
           onOpenDM={handleOpenDM}
           onOpenRoom={handleOpenRoom}
           onCreateGroup={handleCreateGroup}
-          roomUnread={roomUnread}  
+          roomUnread={roomUnread}
           userProfiles={userProfiles}
         />
 
         <div className="flex-1 flex flex-col overflow-hidden">
           {currentRoom ? (
-           <RoomView
+   <RoomView
   currentRoom={currentRoom}
   connected={connected}
   allUsers={allUsers}
@@ -278,7 +329,7 @@ export default function Home() {
   currentUsername={username}
   messages={roomMessages}
   typingUser={roomTyping}
-  rooms={rooms}
+  rooms={mergedRooms}
   userProfiles={userProfiles}
   onOpenDM={handleOpenDM}
   onReact={handleReact}
@@ -294,7 +345,9 @@ export default function Home() {
   onLeaveGroup={leaveGroup}
   onDeleteGroup={deleteGroup}
   onDeleteChat={deleteRoomChat}
-     />
+  onUpdateGroupAvatar={updateGroupAvatar}
+  onAddMembers={handleAddMembers}
+/>
           ) : activeDM ? (
             <DMPanel
               currentUsername={username}
@@ -313,7 +366,7 @@ export default function Home() {
               onReply={(msg) => setDMReplyTo(msg)}
               onForward={handleForward}
               onlineUsers={onlineUsers}
-              rooms={rooms}
+              rooms={mergedRooms}
               replyTo={dmReplyTo ?? undefined}
               onCancelReply={() => setDMReplyTo(null)}
               forwardMsg={forwardData ?? undefined}

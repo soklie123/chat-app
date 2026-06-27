@@ -1,17 +1,14 @@
 import mongoose, { Schema, Document } from "mongoose";
 
 export interface IMessage extends Document {
-  conversationId: string; // to process store all account that one user contact with
-  sender: string;
-
   text: string;
   username: string;
   room: string;
 
-  reactions: { 
-    emoji: string; 
-    count: number; 
-    usernames: string[] 
+  reactions: {
+    emoji: string;
+    count: number;
+    usernames: string[];
   }[];
 
   fileUrl?: string;
@@ -22,15 +19,15 @@ export interface IMessage extends Document {
   audioUrl?: string;
   audioDuration?: number;
 
-  replyTo?: { 
-    _id: string; 
-    username: string; 
-    text: string 
+  replyTo?: {
+    _id: string;
+    username: string;
+    text: string;
   };
 
   forwarded?: boolean;
-  
-  type?: "text" | "call" | "screen_share";
+
+  type?: "text" | "call" | "screen_share" | "file" | "audio";
   event?: "started" | "stopped";
   callType?: "voice" | "video";
   callEvent?: "ended" | "missed" | "rejected";
@@ -52,11 +49,8 @@ const reactionSchema = new Schema(
 
 const MessageSchema = new Schema<IMessage>(
   {
-    conversationId: { type: String, required: true, index: true },
-    sender: { type: String, required: true },
-
     text: { type: String, default: "" },
-    
+
     type: {
       type: String,
       enum: ["text", "call", "screen_share", "file", "audio"],
@@ -67,13 +61,11 @@ const MessageSchema = new Schema<IMessage>(
     room: { type: String, required: true },
     reactions: { type: [reactionSchema], default: [] },
 
-    // For files sent via Cloudinary
     fileUrl: { type: String },
     fileName: { type: String },
     fileType: { type: String },
     isImage: { type: Boolean },
 
-    // Voice messages
     audioUrl: { type: String },
     audioDuration: { type: Number },
 
@@ -82,7 +74,17 @@ const MessageSchema = new Schema<IMessage>(
       username: { type: String },
       text: { type: String },
     },
+
     forwarded: { type: Boolean, default: false },
+
+    // Call-related
+    event: { type: String, enum: ["started", "stopped"] },
+    callType: { type: String, enum: ["voice", "video"] },
+    callEvent: { type: String, enum: ["ended", "missed", "rejected"] },
+    duration: { type: Number },
+
+    fromUsername: { type: String },
+    caption: { type: String },
   },
   { timestamps: true }
 );

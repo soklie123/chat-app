@@ -320,31 +320,33 @@ export default function Home() {
 
         <div className="flex-1 flex flex-col overflow-hidden">
           {currentRoom ? (
-           <RoomView
-            currentRoom={currentRoom}
-            connected={connected}
-            allUsers={allUsers}
-            onlineUsers={onlineUsers}
-            currentUsername={username}
-            messages={roomMessages}
-            typingUser={roomTyping}
-            rooms={rooms}
-            userProfiles={userProfiles}
-            onOpenDM={handleOpenDM}
-            onReact={handleReact}
-            onSeen={markRoomSeen}
-            replyTo={roomReplyTo}
-            setReplyTo={setRoomReplyTo}
-            forwardData={forwardData}
-            setForwardData={setForwardData}
-            sendForward={sendForward}
-            onSend={handleSend}
-            onTyping={emitRoomTyping}
-            onForward={handleForward}
-            onLeaveGroup={leaveGroup}
-            onDeleteGroup={deleteGroup}
-            onDeleteChat={deleteRoomChat}
-              />
+   <RoomView
+  currentRoom={currentRoom}
+  connected={connected}
+  allUsers={allUsers}
+  onlineUsers={onlineUsers}
+  currentUsername={username}
+  messages={roomMessages}
+  typingUser={roomTyping}
+  rooms={mergedRooms}
+  userProfiles={userProfiles}
+  onOpenDM={handleOpenDM}
+  onReact={handleReact}
+  onSeen={markRoomSeen}
+  replyTo={roomReplyTo}
+  setReplyTo={setRoomReplyTo}
+  forwardData={forwardData}
+  setForwardData={setForwardData}
+  sendForward={sendForward}
+  onSend={handleSend}
+  onTyping={emitRoomTyping}
+  onForward={handleForward}
+  onLeaveGroup={leaveGroup}
+  onDeleteGroup={deleteGroup}
+  onDeleteChat={deleteRoomChat}
+  onUpdateGroupAvatar={updateGroupAvatar}
+  onAddMembers={handleAddMembers}
+/>
           ) : activeDM ? (
             <DMPanel
               currentUsername={username}

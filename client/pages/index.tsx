@@ -12,7 +12,6 @@ import DMPanel from "../components/dm/DMPanel";
 import RoomView from "../components/chat/RoomView";
 import CallScreen from "../components/call/CallScreen";
 import { AuthUser } from "../lib/api";
-import { RoomSummary } from "../hooks/useChat";
 
 type ReplyDraft = { _id: string; username: string; text: string } | null;
 type ForwardDraft = { text: string; fromUsername: string } | null;
@@ -321,33 +320,31 @@ export default function Home() {
 
         <div className="flex-1 flex flex-col overflow-hidden">
           {currentRoom ? (
-   <RoomView
-  currentRoom={currentRoom}
-  connected={connected}
-  allUsers={allUsers}
-  onlineUsers={onlineUsers}
-  currentUsername={username}
-  messages={roomMessages}
-  typingUser={roomTyping}
-  rooms={mergedRooms}
-  userProfiles={userProfiles}
-  onOpenDM={handleOpenDM}
-  onReact={handleReact}
-  onSeen={markRoomSeen}
-  replyTo={roomReplyTo}
-  setReplyTo={setRoomReplyTo}
-  forwardData={forwardData}
-  setForwardData={setForwardData}
-  sendForward={sendForward}
-  onSend={handleSend}
-  onTyping={emitRoomTyping}
-  onForward={handleForward}
-  onLeaveGroup={leaveGroup}
-  onDeleteGroup={deleteGroup}
-  onDeleteChat={deleteRoomChat}
-  onUpdateGroupAvatar={updateGroupAvatar}
-  onAddMembers={handleAddMembers}
-/>
+           <RoomView
+            currentRoom={currentRoom}
+            connected={connected}
+            allUsers={allUsers}
+            onlineUsers={onlineUsers}
+            currentUsername={username}
+            messages={roomMessages}
+            typingUser={roomTyping}
+            rooms={rooms}
+            userProfiles={userProfiles}
+            onOpenDM={handleOpenDM}
+            onReact={handleReact}
+            onSeen={markRoomSeen}
+            replyTo={roomReplyTo}
+            setReplyTo={setRoomReplyTo}
+            forwardData={forwardData}
+            setForwardData={setForwardData}
+            sendForward={sendForward}
+            onSend={handleSend}
+            onTyping={emitRoomTyping}
+            onForward={handleForward}
+            onLeaveGroup={leaveGroup}
+            onDeleteGroup={deleteGroup}
+            onDeleteChat={deleteRoomChat}
+              />
           ) : activeDM ? (
             <DMPanel
               currentUsername={username}

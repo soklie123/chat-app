@@ -15,7 +15,7 @@ async function sendSystemMessage(io: Server, roomId: string, text: string) {
     room: roomId,
     username: "system",
     text,
-    time: timeStr,
+    createdAt: timeStr,
   });
 
   // msg._id always exists on a saved Mongoose doc; cast to access it safely

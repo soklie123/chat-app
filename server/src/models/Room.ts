@@ -4,6 +4,9 @@ export interface IRoom extends Document {
   name: string;
   createdBy: string;
   members: string[];
+  
+  conversationId: string;
+
   avatarUrl?: string;
   createdAt: Date;
 }

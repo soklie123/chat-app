@@ -1,11 +1,18 @@
 import mongoose, { Schema, Document } from "mongoose";
 
 export interface IMessage extends Document {
+  conversationId: string; // to process store all account that one user contact with
+  sender: string;
+
   text: string;
   username: string;
   room: string;
 
-  reactions: { emoji: string; count: number; usernames: string[] }[];
+  reactions: { 
+    emoji: string; 
+    count: number; 
+    usernames: string[] 
+  }[];
 
   fileUrl?: string;
   fileName?: string;
@@ -15,8 +22,19 @@ export interface IMessage extends Document {
   audioUrl?: string;
   audioDuration?: number;
 
-  replyTo?: { _id: string; username: string; text: string };
+  replyTo?: { 
+    _id: string; 
+    username: string; 
+    text: string 
+  };
+
   forwarded?: boolean;
+  
+  type?: "text" | "call" | "screen_share";
+  event?: "started" | "stopped";
+  callType?: "voice" | "video";
+  callEvent?: "ended" | "missed" | "rejected";
+  duration?: number;
 
   fromUsername?: string;
   caption?: string;
@@ -34,7 +52,17 @@ const reactionSchema = new Schema(
 
 const MessageSchema = new Schema<IMessage>(
   {
+    conversationId: { type: String, required: true, index: true },
+    sender: { type: String, required: true },
+
     text: { type: String, default: "" },
+    
+    type: {
+      type: String,
+      enum: ["text", "call", "screen_share", "file", "audio"],
+      default: "text",
+    },
+
     username: { type: String, required: true },
     room: { type: String, required: true },
     reactions: { type: [reactionSchema], default: [] },
@@ -59,6 +87,6 @@ const MessageSchema = new Schema<IMessage>(
   { timestamps: true }
 );
 
-MessageSchema.index({ room: 1, createdAt: -1 });
+MessageSchema.index({ conversationId: 1, createdAt: -1 });
 
 export const Message = mongoose.model<IMessage>("Message", MessageSchema);

@@ -94,7 +94,7 @@ export default function CallScreen({
 
   useEffect(() => {
     if (remoteVideoRef.current && remoteStream) {
-      remoteVideoRef.current.srcObject = remoteStream;
+      remoteVideoRef.current.srcObject = remoteStream || null;
     }
   }, [remoteStream]);
 
@@ -110,7 +110,7 @@ export default function CallScreen({
 
   const otherUser   = callInfo.from === username ? callInfo.to : callInfo.from;
   const hasLocalVid = !isCamOff || isSharing;
-  const hasRemoteVid = remoteStream && remoteStream.getVideoTracks().length > 0;
+  const hasRemoteVid = remoteStream && remoteStream.getVideoTracks().some((t) => t.readyState === "live");
 
   return (
     <div className="fixed inset-0 z-50 bg-[#0d1117] flex flex-col">
@@ -153,9 +153,9 @@ export default function CallScreen({
               <Avatar name={otherUser} size={112} />
             </div>
             <div className="text-white text-2xl font-semibold">{otherUser}</div>
-            <div className="text-white/50 text-sm tracking-wide">
-              {callState === "calling"   && "Calling…"}
-              {callState === "connected" && "Connected"}
+            <div className="text-white text-2xl font-semibold tracking-wider animate-pulse">
+              {callState === "calling" && "Calling…"}
+              {callState === "connected" && formatCallDuration(callDuration)}
             </div>
           </div>
         )}
@@ -183,8 +183,12 @@ export default function CallScreen({
               <Avatar name={otherUser} size={80} />
             </div>
             <p className="text-white text-lg font-semibold">{otherUser}</p>
-            <p className="text-white/50 text-sm">
-              Incoming {callInfo.type} call…
+            <p className="text-white text-2xl font-semibold tracking-wider animate-pulse">
+              Incoming…
+            </p>
+
+            <p className="text-white/50 text-sm tracking-wider uppercase">
+              {callInfo.type} call
             </p>
           </div>
         )}
@@ -195,13 +199,10 @@ export default function CallScreen({
             <p className="text-white font-semibold">{otherUser}</p>
             <p className="text-white/50 text-xs">
               {callState === "connected"
-                ? remoteStream
-                  ? formatCallDuration(callDuration)
-                  : "Connecting…"
+                ? "Connected"
                 : callState === "calling"
                 ? "Calling…"
-                : "Incoming"
-              }
+                : "Incoming"}
             </p>
           </div>
           <div className="flex items-center gap-1.5">

@@ -6,6 +6,11 @@ export interface IDirectMessage extends Document {
     caption?: string; 
     fromUsername?: string;
 
+    // NEW FIELDS (DELETE FEATURE)
+    deletedFor?: string[];            // delete for me
+    deletedForEveryone?: boolean;    // unsent
+    deletedAt?: Date;
+
     reactions?: {
       emoji: string;
       count: number;
@@ -47,6 +52,10 @@ const DirectMessageSchema = new Schema<IDirectMessage>({
     caption: { type: String },
     fromUsername: { type: String },
 
+    deletedFor: { type: [String], default: [] },
+    deletedForEveryone: { type: Boolean, default: false },
+    deletedAt: { type: Date },
+
     reactions: { type: [reactionSchema], default: [] },
 
     fileUrl: { type: String },
@@ -71,7 +80,7 @@ const DirectMessageSchema = new Schema<IDirectMessage>({
         enum: ["text", "call", "screen_share"],
         default: "text",
     },
- // "text" | "call"
+    // "text" | "call"
         
     event: {
         type: String,

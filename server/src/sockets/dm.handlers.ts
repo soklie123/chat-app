@@ -3,6 +3,7 @@ import { DirectMessage, IDirectMessage } from "../models/DirectMessage";
 import { onlineUsers, getSocketId } from "./state";
 
 export function registerDMHandlers(io: Server, socket: Socket) {
+  
   socket.on("dm_open", async ({ from, to }: { from: string; to: string }) => {
     if (!from || !to) return;
 
@@ -12,6 +13,7 @@ export function registerDMHandlers(io: Server, socket: Socket) {
         { from, to },
         { from: to, to: from },
       ],
+      deletedFor: { $ne: from }, // hide "delete for me"
     })
       .sort({ createdAt: -1 })
       .limit(30);
@@ -23,10 +25,7 @@ export function registerDMHandlers(io: Server, socket: Socket) {
   });
 
   socket.on("dm_send", async ({
-    from,
-    to,
-    text,
-    tempId,
+    from, to,  text, tempId,
     fileUrl,
     fileName,
     fileType,
@@ -113,6 +112,67 @@ export function registerDMHandlers(io: Server, socket: Socket) {
     }
   );
 
+  socket.on("dm_delete_for_me", async ({ messageId, username }) => {
+    const msg = await DirectMessage.findById(messageId);
+    if (!msg) return;
+
+    if (!msg.deletedFor) msg.deletedFor = [];
+
+    if (!msg.deletedFor.includes(username)) {
+      msg.deletedFor.push(username);
+      await msg.save();
+    }
+
+    socket.emit("dm_deleted_for_me", { messageId });
+  });
+
+  socket.on("dm_delete_for_everyone", async ({ messageId, username, to }) => {
+    const msg = await DirectMessage.findById(messageId);
+    if (!msg) return;
+
+    // already unsent → stop
+    if (msg.deletedForEveryone) return;
+
+    // only sender can unsend
+    if (msg.from !== username) return;
+
+    // time limit (MUST be BEFORE modifying DB)
+    const now = Date.now();
+    const created = new Date(msg.createdAt).getTime();
+
+    if (now - created > 5 * 60 * 1000) {
+      return; // block after 5 minutes
+    }
+
+    // ✅ mark unsent
+    msg.deletedForEveryone = true;
+    msg.deletedAt = new Date();
+
+    // ✅ clear ALL content
+    msg.text = "";
+    msg.caption = undefined;
+    msg.fileUrl = undefined;
+    msg.fileName = undefined;
+    msg.fileType = undefined;
+    msg.audioUrl = undefined;
+    msg.audioDuration = undefined;
+    msg.replyTo = undefined;
+    msg.reactions = [];
+
+    await msg.save();
+
+    const payload = { messageId };
+
+    // ✅ emit to sender
+    socket.emit("dm_unsent", payload);
+
+    // ✅ emit to receiver
+    const receiverSocketId = getSocketId(to);
+    if (receiverSocketId) {
+      io.to(receiverSocketId).emit("dm_unsent", payload);
+    }
+  });
+
   socket.on("dm_typing", ({ from, to }: { from: string; to: string }) => {
     const recipientSocketId = getSocketId(to);
     if (recipientSocketId) {
@@ -120,9 +180,9 @@ export function registerDMHandlers(io: Server, socket: Socket) {
     }
   });
 
-  socket.on(
-    "dm_stop_typing",
-    ({ from, to }: { from: string; to: string }) => {
+  socket.on( "dm_stop_typing", (
+    { from, to }: { from: string; to: string }
+  ) => {
       const recipientSocketId = getSocketId(to);
       if (recipientSocketId) {
         io.to(recipientSocketId).emit("dm_user_stop_typing", from);

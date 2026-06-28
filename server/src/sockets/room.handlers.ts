@@ -5,22 +5,19 @@ import { User } from "../models/User";
 import { onlineUsers, rooms, broadcastRoomList, getSocketId, SYSTEM_ROOMS } from "./state";
 
 async function sendSystemMessage(io: Server, roomId: string, text: string) {
-  const timeStr = new Date().toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-
   const msg = await Message.create({
     room: roomId,
     username: "system",
     text,
-    createdAt: timeStr,
   });
 
-  const docId = (msg as { _id: unknown })._id;
+  const timeStr = new Date(msg.createdAt).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 
   io.to(roomId).emit("receive_message", {
-    _id: docId,
+    _id: msg._id,
     roomId,
     username: "system",
     text,
@@ -104,22 +101,56 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
     await broadcastRoomList(io);
   });
 
-  socket.on("create_room", async (roomName: string) => {
-    const username = onlineUsers.get(socket.id);
-    if (!username || !roomName) return;
+  // ── Create room — accepts { roomName, members?, avatarUrl? } ──
+  socket.on(
+    "create_room",
+    async ({
+      roomName,
+      members,
+      avatarUrl,
+    }: {
+      roomName: string;
+      members?: string[];
+      avatarUrl?: string;
+    }) => {
+      const username = onlineUsers.get(socket.id);
+      if (!username || !roomName) return;
 
-    const roomId = roomName.toLowerCase().replace(/\s+/g, "-");
-    const exists = await Room.findOne({ name: roomId });
-    if (exists) {
-      socket.emit("room_exists", roomId);
-      return;
+      const roomId = roomName.toLowerCase().replace(/\s+/g, "-");
+      const exists = await Room.findOne({ name: roomId });
+      if (exists) {
+        socket.emit("room_exists", roomId);
+        return;
+      }
+
+      // Always include the creator; deduplicate
+      const allMembers = Array.from(new Set([username, ...(members ?? [])]));
+
+      await Room.create({
+        name: roomId,
+        createdBy: username,
+        members: allMembers,
+        ...(avatarUrl ? { avatarUrl } : {}),
+      });
+
+      rooms.set(roomId, new Set(allMembers));
+
+      // Notify each invited member so their sidebar updates immediately
+      for (const member of allMembers) {
+        if (member === username) continue;
+        const targetSocketId = getSocketId(member);
+        if (targetSocketId) {
+          io.to(targetSocketId).emit("invited_to_group", {
+            groupName: roomId,
+            invitedBy: username,
+          });
+        }
+      }
+
+      await broadcastRoomList(io);
+      socket.emit("room_created", roomId);
     }
-
-    await Room.create({ name: roomId, createdBy: username, members: [username] });
-    rooms.set(roomId, new Set([username]));
-    await broadcastRoomList(io);
-    socket.emit("room_created", roomId);
-  });
+  );
 
   socket.on("invite_to_group", async ({ room, users }: { room: string; users: string[] }) => {
     const invitedBy = onlineUsers.get(socket.id);
@@ -299,6 +330,43 @@ export function registerRoomHandlers(io: Server, socket: Socket) {
 
     const msgs = await Message.find({ _id: { $in: roomDoc.pinnedMessages } }).lean();
     socket.emit("pinned_messages", { roomId, messages: msgs });
+  });
+
+  // ── Rename group (creator only) ────────────────────────
+  socket.on("rename_group", async ({ roomId, newName }: { roomId: string; newName: string }) => {
+    const username = onlineUsers.get(socket.id);
+    if (!username || !roomId || !newName) return;
+
+    const trimmed = newName.trim().toLowerCase().replace(/\s+/g, "-");
+    if (!trimmed || trimmed.length < 2) return;
+
+    const roomDoc = await Room.findOne({ name: roomId });
+    if (!roomDoc) return;
+
+    if (roomDoc.createdBy !== username) {
+      socket.emit("rename_group_denied", { roomId, reason: "not_creator" });
+      return;
+    }
+
+    const exists = await Room.findOne({ name: trimmed });
+    if (exists && trimmed !== roomId) {
+      socket.emit("rename_group_denied", { roomId, reason: "name_taken" });
+      return;
+    }
+
+    await Room.findOneAndUpdate({ name: roomId }, { name: trimmed });
+    await Message.updateMany({ room: roomId }, { room: trimmed });
+
+    const members = rooms.get(roomId);
+    if (members) {
+      rooms.delete(roomId);
+      rooms.set(trimmed, members);
+    }
+
+    io.to(roomId).emit("group_renamed", { oldRoomId: roomId, newRoomId: trimmed });
+
+    await sendSystemMessage(io, trimmed, `${username} renamed the group to #${trimmed}`);
+    await broadcastRoomList(io);
   });
 
   // ── Archive / unarchive a room (per user) ─────────────

@@ -26,7 +26,7 @@ export type RoomSummary = {
   members: string[];
   createdBy: string;
   unread: number;
-  avatarUrl?: string;       
+  avatarUrl?: string;
   lastMessage?: string;
   lastMessageFrom?: string;
   lastMessageTime?: string;
@@ -78,7 +78,6 @@ export function useChat(username: string) {
       sock.emit("register_user");
 
       // Seed userProfiles on connect so avatars show immediately in the sidebar.
-      // The "user_profile_updated" socket event keeps them live after this.
       const currentToken = getToken();
       fetch(`${SOCKET_URL}/auth/users/profiles`, {
         headers: currentToken ? { Authorization: `Bearer ${currentToken}` } : {},
@@ -103,8 +102,6 @@ export function useChat(username: string) {
     sock.on("online_users", (users: string[]) => setOnlineUsers(users));
     sock.on("all_users", (users: string[]) => setAllUsers(users));
 
-    // When server broadcasts a profile update, merge it in so all components
-    // that consume userProfiles re-render with the new avatar/bio.
     sock.on(
       "user_profile_updated",
       ({ username: updatedUsername, avatarUrl, bio }: { username: string; avatarUrl: string; bio: string }) => {
@@ -147,8 +144,9 @@ export function useChat(username: string) {
     };
   }, [username]);
 
-  const createRoom = (roomName: string) => {
-    socketRef.current?.emit("create_room", roomName);
+  // Send name + members + optional avatar URL in one emit
+  const createRoom = (roomName: string, members: string[] = [], avatarUrl?: string) => {
+    socketRef.current?.emit("create_room", { roomName, members, avatarUrl });
   };
 
   const bumpRoomUnread = useCallback(

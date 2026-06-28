@@ -3,17 +3,17 @@ import { DirectMessage, IDirectMessage } from "../models/DirectMessage";
 import { onlineUsers, getSocketId } from "./state";
 
 export function registerDMHandlers(io: Server, socket: Socket) {
-  
+
+  // ── Open DM: load history ───────────────────────────────────────
   socket.on("dm_open", async ({ from, to }: { from: string; to: string }) => {
     if (!from || !to) return;
 
-    // Load last 30 messages between these two users
     const messages = await DirectMessage.find({
       $or: [
         { from, to },
         { from: to, to: from },
       ],
-      deletedFor: { $ne: from }, // hide "delete for me"
+      deletedFor: { $ne: from },
     })
       .sort({ createdAt: -1 })
       .limit(30);
@@ -24,32 +24,23 @@ export function registerDMHandlers(io: Server, socket: Socket) {
     });
   });
 
+  // ── Send a DM ───────────────────────────────────────────────────
   socket.on("dm_send", async ({
-    from, to,  text, tempId,
-    fileUrl,
-    fileName,
-    fileType,
-    isImage,
-    audioUrl,
-    audioDuration,
-    replyTo,
-    forwarded,
-    caption,
-    fromUsername,
+    from, to, text, tempId,
+    fileUrl, fileName, fileType, isImage,
+    audioUrl, audioDuration,
+    replyTo, forwarded, caption, fromUsername,
   }: {
     from: string;
     to: string;
     text: string;
     tempId?: string;
-
     fileUrl?: string;
     fileName?: string;
     fileType?: string;
     isImage?: boolean;
-
     audioUrl?: string;
     audioDuration?: number;
-
     replyTo?: { _id: string; username: string; text: string };
     forwarded?: boolean;
     caption?: string;
@@ -57,67 +48,55 @@ export function registerDMHandlers(io: Server, socket: Socket) {
   }) => {
     if (!from || !to || (!text && !fileUrl && !audioUrl)) return;
 
-      const saved = await DirectMessage.create({
-        from,
-        to,
-        text: text || "",
+    const saved = await DirectMessage.create({
+      from,
+      to,
+      text: text || "",
+      fileUrl, fileName, fileType, isImage,
+      audioUrl, audioDuration,
+      replyTo, forwarded, caption, fromUsername,
+    }) as IDirectMessage;
 
-        fileUrl,
-        fileName,
-        fileType,
-        isImage,
+    const payload = {
+      _id: saved._id,
+      tempId,
+      from,
+      to,
+      text,
+      fileUrl, fileName, fileType, isImage,
+      audioUrl, audioDuration,
+      replyTo, forwarded, caption, fromUsername,
+      time: new Date(saved.createdAt).toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+    };
 
-        audioUrl,
-        audioDuration,
+    const recipientSocketId = getSocketId(to);
+    if (recipientSocketId) {
+      io.to(recipientSocketId).emit("dm_receive", payload);
+    }
 
-        replyTo,
-        forwarded,
-        caption,
-        fromUsername,
-      }) as IDirectMessage;
+    socket.emit("dm_sent", payload);
+  });
 
-      const payload = {
-        _id: saved._id,
-        tempId,
-        from,
-        to,
-        text,
-        fileUrl,
-        fileName,
-        fileType,
-        isImage,
-
-        audioUrl,
-        audioDuration,
-
-        replyTo,
-        forwarded,
-        caption,
-        fromUsername,
-        time: new Date(saved.createdAt).toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
-      };
-
-      // Send to recipient if online
-      const recipientSocketId = getSocketId(to);
-
-      if (recipientSocketId) {
-        io.to(recipientSocketId).emit("dm_receive", payload);
+  // ── Mark messages as seen ────────────────────────────────────────
+  socket.on(
+    "dm_seen",
+    ({ from, to, messageIds }: { from: string; to: string; messageIds: string[] }) => {
+      const senderSocketId = getSocketId(to);
+      if (senderSocketId) {
+        io.to(senderSocketId).emit("dm_seen", { by: from, messageIds });
       }
-
-      // Confirm back to sender
-      socket.emit("dm_sent", payload);
     }
   );
 
-  socket.on("dm_delete_for_me", async ({ messageId, username }) => {
+  // ── Delete for me ────────────────────────────────────────────────
+  socket.on("dm_delete_for_me", async ({ messageId, username }: { messageId: string; username: string }) => {
     const msg = await DirectMessage.findById(messageId);
     if (!msg) return;
 
     if (!msg.deletedFor) msg.deletedFor = [];
-
     if (!msg.deletedFor.includes(username)) {
       msg.deletedFor.push(username);
       await msg.save();
@@ -126,53 +105,64 @@ export function registerDMHandlers(io: Server, socket: Socket) {
     socket.emit("dm_deleted_for_me", { messageId });
   });
 
-  socket.on("dm_delete_for_everyone", async ({ messageId, username, to }) => {
-    const msg = await DirectMessage.findById(messageId);
-    if (!msg) return;
+  // ── Delete for everyone (unsend) — THE canonical handler ─────────
+  // Client emits:  socket.emit("dm_delete_for_everyone", { messageId, username, to })
+  // Server emits:  "dm_unsent" to both participants
+  socket.on(
+    "dm_delete_for_everyone",
+    async ({
+      messageId,
+      username,
+      to,
+    }: {
+      messageId: string;
+      username: string;
+      to: string;
+    }) => {
+      if (!messageId || !username || !to) return;
 
-    // already unsent → stop
-    if (msg.deletedForEveryone) return;
+      const msg = await DirectMessage.findById(messageId);
+      if (!msg) return;
 
-    // only sender can unsend
-    if (msg.from !== username) return;
+      // Already unsent — nothing to do
+      if (msg.deletedForEveryone) return;
 
-    // time limit (MUST be BEFORE modifying DB)
-    const now = Date.now();
-    const created = new Date(msg.createdAt).getTime();
+      // Only the original sender can unsend
+      if (msg.from !== username) return;
 
-    if (now - created > 5 * 60 * 1000) {
-      return; // block after 5 minutes
+      // 5-minute time limit
+      const ageMs = Date.now() - new Date(msg.createdAt).getTime();
+      if (ageMs > 5 * 60 * 1000) return;
+
+      // Clear all content
+      msg.deletedForEveryone = true;
+      msg.deletedAt = new Date();
+      msg.text = "";
+      msg.caption = undefined;
+      msg.fileUrl = undefined;
+      msg.fileName = undefined;
+      msg.fileType = undefined;
+      msg.audioUrl = undefined;
+      msg.audioDuration = undefined;
+      msg.replyTo = undefined;
+      msg.reactions = [];
+
+      await msg.save();
+
+      const payload = { messageId };
+
+      // Emit to sender
+      socket.emit("dm_unsent", payload);
+
+      // Emit to recipient if online
+      const recipientSocketId = getSocketId(to);
+      if (recipientSocketId) {
+        io.to(recipientSocketId).emit("dm_unsent", payload);
+      }
     }
+  );
 
-    // ✅ mark unsent
-    msg.deletedForEveryone = true;
-    msg.deletedAt = new Date();
-
-    // ✅ clear ALL content
-    msg.text = "";
-    msg.caption = undefined;
-    msg.fileUrl = undefined;
-    msg.fileName = undefined;
-    msg.fileType = undefined;
-    msg.audioUrl = undefined;
-    msg.audioDuration = undefined;
-    msg.replyTo = undefined;
-    msg.reactions = [];
-
-    await msg.save();
-
-    const payload = { messageId };
-
-    // ✅ emit to sender
-    socket.emit("dm_unsent", payload);
-
-    // ✅ emit to receiver
-    const receiverSocketId = getSocketId(to);
-    if (receiverSocketId) {
-      io.to(receiverSocketId).emit("dm_unsent", payload);
-    }
-  });
-
+  // ── Typing indicators ────────────────────────────────────────────
   socket.on("dm_typing", ({ from, to }: { from: string; to: string }) => {
     const recipientSocketId = getSocketId(to);
     if (recipientSocketId) {
@@ -180,18 +170,17 @@ export function registerDMHandlers(io: Server, socket: Socket) {
     }
   });
 
-  socket.on( "dm_stop_typing", (
-    { from, to }: { from: string; to: string }
-  ) => {
-      const recipientSocketId = getSocketId(to);
-      if (recipientSocketId) {
-        io.to(recipientSocketId).emit("dm_user_stop_typing", from);
-      }
+  socket.on("dm_stop_typing", ({ from, to }: { from: string; to: string }) => {
+    const recipientSocketId = getSocketId(to);
+    if (recipientSocketId) {
+      io.to(recipientSocketId).emit("dm_user_stop_typing", from);
     }
-  );
+  });
 
-  // ── DM Reactions ───────────────────────────────────────
-  socket.on("add_dm_reaction",async ({
+  // ── Reactions ────────────────────────────────────────────────────
+  socket.on(
+    "add_dm_reaction",
+    async ({
       messageId,
       emoji,
       username,
@@ -207,48 +196,40 @@ export function registerDMHandlers(io: Server, socket: Socket) {
 
       if (!message.reactions) message.reactions = [];
 
-      // Check toggle
+      // Detect toggle (same emoji clicked again)
       const alreadyReacted = message.reactions.find(
         (r) => r.emoji === emoji && r.usernames.includes(username)
       );
 
-      // Remove user from all emojis
+      // Remove user from all emojis first
       message.reactions.forEach((r) => {
         r.usernames = r.usernames.filter((u) => u !== username);
         r.count = r.usernames.length;
       });
 
-      // Remove empty reactions
+      // Remove empty reaction groups
       message.reactions = message.reactions.filter((r) => r.count > 0);
 
-      if (alreadyReacted) {
-        // toggle off
-        await message.save();
-      } else {
+      if (!alreadyReacted) {
+        // Add to the chosen emoji
         const existing = message.reactions.find((r) => r.emoji === emoji);
         if (existing) {
           existing.usernames.push(username);
           existing.count = existing.usernames.length;
         } else {
-          message.reactions.push({
-            emoji,
-            usernames: [username],
-            count: 1,
-          });
+          message.reactions.push({ emoji, usernames: [username], count: 1 });
         }
-        await message.save();
       }
+      // If alreadyReacted → we already removed them above (toggle off)
 
-      const payload = {
-        messageId,
-        reactions: message.reactions,
-      };
+      await message.save();
 
-      const recipientSocketId = getSocketId(to);
+      const payload = { messageId, reactions: message.reactions };
 
-      // Send to both users
+      // Send to both participants
       socket.emit("dm_reaction_updated", payload);
 
+      const recipientSocketId = getSocketId(to);
       if (recipientSocketId) {
         io.to(recipientSocketId).emit("dm_reaction_updated", payload);
       }

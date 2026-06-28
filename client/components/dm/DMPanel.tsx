@@ -8,7 +8,6 @@ import { MdPhone, MdVideocam, MdInfoOutline } from "react-icons/md";
 import CallEventBubble from "../call/CallEventBubble";
 import MessageStatusIcon from "../chat/MessageStatus";
 import ReplyPreview from "../chat/Replypreview";
-import ReplyBar from "../chat/ReplyBar";
 import { MessageBubble } from "../chat/MessageBubble";
 import useVoiceRecorder from "@/hooks/useVoiceRecorder";
 import AudioPlayer from "../shared/AudioPlayer";
@@ -18,10 +17,44 @@ import { UserProfile } from "../../hooks/useChat";
 
 const UPLOAD_URL = "http://localhost:4000/upload";
 
+// ── Reaction bubbles ──────────────────────────────────────────────────────────
+function ReactionBubbles({
+  reactions,
+  currentUsername,
+  onReact,
+}: {
+  reactions: DMMessage["reactions"];
+  currentUsername: string;
+  onReact: (emoji: string) => void;
+}) {
+  if (!reactions || reactions.length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-1.5 mt-2">
+      {reactions.map((r) => {
+        const reacted = r.usernames.includes(currentUsername);
+        return (
+          <button
+            key={r.emoji}
+            onClick={() => onReact(r.emoji)}
+            className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[12px] cursor-pointer transition-colors ${
+              reacted
+                ? "border border-[rgba(82,136,193,0.4)] bg-[rgba(82,136,193,0.2)] text-[#5288c1] font-semibold"
+                : "border border-[#101921] bg-[#202b36] text-[#9aa5b1]"
+            }`}
+          >
+            <span>{r.emoji}</span>
+            <span className="text-[11px] opacity-90">{r.count}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function DMPanel({
   currentUsername, withUser, messages, dmTyping, isOnline,
   onSend, onTyping, onClose, onReact, onVideoCall, onVoiceCall,
-  onSeen, onReply, onForward, allUsers, onlineUsers, rooms, replyTo,
+  onSeen, onReply, onForward, onDeleteMessage, allUsers, onlineUsers, rooms, replyTo,
   onCancelReply, forwardMsg, onCancelForward, onForwardSend,
   withUserProfile,
 }: {
@@ -44,6 +77,7 @@ export default function DMPanel({
   onSeen?: (messageIds: string[]) => void;
   onReply?: (msg: { _id: string; username: string; text: string }) => void;
   onForward?: (text: string, fromUsername: string, to: string, isRoom: boolean) => void;
+  onDeleteMessage?: (messageId: string) => void;
   allUsers?: [];
   onlineUsers?: string[];
   rooms?: { id: string; name: string }[];
@@ -52,7 +86,6 @@ export default function DMPanel({
   forwardMsg?: { text: string; fromUsername: string };
   onCancelForward?: () => void;
   onForwardSend?: (text: string, fromUsername: string, caption: string) => void;
-  /** Profile (avatar/bio) of the person we're chatting with, for the docked info panel. */
   withUserProfile?: UserProfile;
 }) {
   const [uploading, setUploading] = useState(false);
@@ -65,42 +98,34 @@ export default function DMPanel({
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const isNearBottomRef = useRef(true);
 
-  //  recorded voice in dm
   const [voiceUploading, setVoiceUploading] = useState(false);
-
-  // preview record voice can cancel sent or sent
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const timerRef = useRef<number | null>(null);
   const waveCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  // Closing/switching the DM should also close the info panel so it doesn't
-  // carry over and show stale info for the next person opened.
   useEffect(() => {
     setShowInfoPanel(false);
   }, [withUser]);
 
-  // ── Scroll position tracker — MUST be inside useEffect so `el` exists ──
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     const handleScroll = () => {
       const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 100;
       isNearBottomRef.current = atBottom;
-      setShowJumpBtn(!atBottom);          // ← show button when NOT near bottom
+      setShowJumpBtn(!atBottom);
     };
     el.addEventListener("scroll", handleScroll);
     return () => el.removeEventListener("scroll", handleScroll);
   }, []);
 
-  // ── Smart auto-scroll: only jump if already near bottom ──
   useEffect(() => {
     if (!isNearBottomRef.current) return;
     const el = scrollRef.current;
     if (!el) return;
-    el.scrollTop = el.scrollHeight;  // instant, no animation jank
+    el.scrollTop = el.scrollHeight;
   }, [messages]);
 
-  // ── Dismiss hover panel on touch outside ──
   useEffect(() => {
     const dismiss = (e: TouchEvent) => {
       const target = e.target as HTMLElement;
@@ -111,7 +136,6 @@ export default function DMPanel({
     return () => document.removeEventListener("touchstart", dismiss);
   }, []);
 
-  // ── Mark messages as seen ──
   useEffect(() => {
     const unseenIds = messages.filter((m) => !m.fromSelf && m._id).map((m) => m._id!);
     if (unseenIds.length > 0) onSeen?.(unseenIds);
@@ -123,17 +147,15 @@ export default function DMPanel({
     };
   }, []);
 
-
   const handleVoiceRecorded = async (blob: Blob, duration: number) => {
     setVoiceUploading(true);
-
     try {
       const formData = new FormData();
       formData.append("file", blob, `voice-${Date.now()}.webm`);
       const res = await axios.post(UPLOAD_URL, formData);
       onSend("", undefined, {
         audioUrl: res.data.url,
-        audioDuration: duration.toFixed(1), // convert number to string
+        audioDuration: duration.toFixed(1),
       });
     } catch {
       alert("Voice upload failed.");
@@ -157,13 +179,13 @@ export default function DMPanel({
 
   const handleStopAndSend = () => {
     if (timerRef.current !== null) { window.clearInterval(timerRef.current); timerRef.current = null; }
-    stop();  // hook handles waveform cleanup + sends via onRecorded
+    stop();
   };
 
   const handleCancelRecording = () => {
     if (timerRef.current !== null) { window.clearInterval(timerRef.current); timerRef.current = null; }
     setRecordingSeconds(0);
-    cancel(); // hook suppresses onRecorded callback
+    cancel();
   };
 
   const scrollToBottom = () => {
@@ -223,9 +245,8 @@ export default function DMPanel({
         </button>
       </div>
 
-      {/* ── Messages + Jump Button — relative wrapper so button can be absolute ── */}
+      {/* ── Messages ── */}
       <div className="flex-1 overflow-hidden relative">
-
         <div ref={scrollRef} className="custom-scrollbar h-full overflow-y-auto px-5 py-4 bg-[#0e1621]">
           <div className="flex flex-col gap-1.5">
 
@@ -240,27 +261,41 @@ export default function DMPanel({
 
             {messages.map((msg, i) => {
               const id = msg._id ?? String(i);
-              // if (msg.callEvent) {
-              //   return (
-              //     <div key={msg._id ?? i} className={`flex w-full ${msg.fromSelf ? "justify-end" : "justify-start"}`}>
-              //       <CallEventBubble
-              //           callEvent={msg.callEvent}
-              //           callType={msg.callType ?? "voice"}
-              //           callDuration={msg.callDuration}
-              //           fromSelf={msg.fromSelf}
-              //           username={msg.username}
-              //           time={msg.time}
-              //       />
-              //     </div>
-              //   );
-              // }
+
+              // ── Deleted for everyone — show placeholder, no hover panel ──
+              if (msg.deletedForEveryone) {
+                return (
+                  <div
+                    key={id}
+                    className={`flex ${msg.fromSelf ? "justify-end" : "items-end gap-2.5"}`}
+                  >
+                    {!msg.fromSelf && (
+                      <div className="shrink-0 mb-1">
+                        <Avatar name={msg.username} size={32} avatarUrl={withUserProfile?.avatarUrl} />
+                      </div>
+                    )}
+                    <div
+                      className={`rounded-2xl px-3.5 py-2 text-[13px] italic border max-w-[70%] ${
+                        msg.fromSelf
+                          ? "bg-[#2b5278] border-[#244565] text-[rgba(209,213,219,0.45)] rounded-tr-[4px]"
+                          : "bg-[#182533] border-[#101921] text-[#6c7883] rounded-tl-[4px]"
+                      }`}
+                    >
+                      🚫 This message was deleted
+                    </div>
+                  </div>
+                );
+              }
+
               return msg.fromSelf ? (
+                // ── Sent message ────────────────────────────────────────
                 <div key={id} className="flex justify-end">
                   <div className="max-w-[70%]">
                     <MessageBubble id={id} hoveredId={hoveredId} setHoveredId={setHoveredId}
                       fromSelf={true} msgId={msg._id} msgUsername={msg.username} msgText={msg.text}
                       onReact={(msgId, emoji) => onReact?.(msgId, emoji)}
                       onReply={(m) => onReply?.(m)}
+                      onDelete={onDeleteMessage}
                       allUsers={allUsers ?? []}
                       onForward={(text, fromUsername) => onForward?.(text, fromUsername, withUser, false)}
                       onlineUsers={onlineUsers ?? []} 
@@ -270,7 +305,7 @@ export default function DMPanel({
                         className={`rounded-2xl relative ${
                           msg.callEvent
                             ? "bg-transparent border-none shadow-none p-0"
-                            : "bg-[#2b5278] border border-[#244565] px-3.5 py-2 text-[#d1d5db]"
+                            : "bg-[#2b5278] border border-[#244565] px-3.5 py-2 text-[#d1d5db] rounded-tr-[4px]"
                         }`}
                       >
                         {msg.forwarded && (
@@ -282,7 +317,6 @@ export default function DMPanel({
                           </div>
                         )}
                         {msg.replyTo && <ReplyPreview replyTo={msg.replyTo} fromSelf={true} />}
-                        {/* {msg.text && <span className="whitespace-pre-wrap break-words block">{msg.text}</span>} */}
                         {msg.callEvent ? (
                           <CallEventBubble
                             callEvent={msg.callEvent}
@@ -295,17 +329,11 @@ export default function DMPanel({
                         ) : (
                           <>
                             {msg.text && (
-                              <span className="whitespace-pre-wrap break-words block">
-                                {msg.text}
-                              </span>
+                              <span className="whitespace-pre-wrap break-words block">{msg.text}</span>
                             )}
-
                             {msg.caption && (
-                              <div className="text-[12px] text-[#d1d5db] mt-1 italic">
-                                {msg.caption}
-                              </div>
+                              <div className="text-[12px] text-[#d1d5db] mt-1 italic">{msg.caption}</div>
                             )}
-
                             {msg.audioUrl && (
                               <AudioPlayer
                                 audioUrl={msg.audioUrl}
@@ -317,7 +345,6 @@ export default function DMPanel({
                                 fromSelf={msg.fromSelf}
                               />
                             )}
-
                             {msg.fileUrl && (
                               <FilePreview
                                 fileUrl={msg.fileUrl}
@@ -326,32 +353,16 @@ export default function DMPanel({
                                 isImage={msg.isImage}
                               />
                             )}
+                            {/* ── Reactions ── */}
+                            {msg.reactions && msg.reactions.length > 0 && (
+                              <ReactionBubbles
+                                reactions={msg.reactions}
+                                currentUsername={currentUsername}
+                                onReact={(emoji) => msg._id && onReact?.(msg._id, emoji)}
+                              />
+                            )}
                           </>
                         )}
-                        {/* {msg.caption && <div className="text-[12px] text-[#d1d5db] mt-1 italic">{msg.caption}</div>}
-                        {msg.audioUrl && (
-                          <AudioPlayer
-                            audioUrl={msg.audioUrl}
-                            audioDuration={typeof msg.audioDuration === "string"
-                              ? parseFloat(msg.audioDuration)
-                              : (msg.audioDuration ?? 0)}
-                            fromSelf={msg.fromSelf}
-                          />
-                        )}
-                        {msg.fileUrl && <FilePreview fileUrl={msg.fileUrl} fileName={msg.fileName} fileType={msg.fileType} isImage={msg.isImage} />}
-                        {msg.reactions && msg.reactions.length > 0 && (
-                          <div className="flex flex-wrap gap-1.5 mt-2">
-                            {msg.reactions.map((r) => {
-                              const reacted = r.usernames.includes(currentUsername);
-                              return (
-                                <button key={r.emoji} onClick={() => msg._id && onReact?.(msg._id, r.emoji)}
-                                  className={`flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[12px] cursor-pointer transition-colors ${reacted ? "border border-[rgba(82,136,193,0.4)] bg-[rgba(82,136,193,0.2)] text-[#5288c1] font-semibold" : "border border-[#244565] bg-[#1e3a56] text-[#9aa5b1]"}`}>
-                                  <span>{r.emoji}</span><span className="text-[11px]">{r.count}</span>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        )} */}
                         {!msg.callEvent && (
                           <div className="flex items-center justify-end gap-1 mt-1 opacity-75">
                             <span className="text-[10px] text-[rgba(209,213,219,0.8)] font-medium">
@@ -365,13 +376,17 @@ export default function DMPanel({
                   </div>
                 </div>
               ) : (
+                // ── Received message ────────────────────────────────────
                 <div key={id} className="flex items-end gap-2.5 max-w-[70%]">
-                  <div className="shrink-0 mb-1"><Avatar name={msg.username} size={32} avatarUrl={withUserProfile?.avatarUrl} /></div>
+                  <div className="shrink-0 mb-1">
+                    <Avatar name={msg.username} size={32} avatarUrl={withUserProfile?.avatarUrl} />
+                  </div>
                   <div className="flex-1 min-w-0">
                     <MessageBubble id={id} hoveredId={hoveredId} setHoveredId={setHoveredId}
                       fromSelf={false} msgId={msg._id} msgUsername={msg.username} msgText={msg.text}
                       onReact={(msgId, emoji) => onReact?.(msgId, emoji)}
                       onReply={(m) => onReply?.(m)}
+                      onDelete={onDeleteMessage}
                       onForward={(text, fromUsername) => onForward?.(text, fromUsername, withUser, false)}
                       allUsers={allUsers ?? []}
                       onlineUsers={onlineUsers ?? []} 
@@ -381,7 +396,7 @@ export default function DMPanel({
                         className={`rounded-2xl relative ${
                           msg.callEvent
                             ? "bg-transparent border-none shadow-none p-0"
-                            : "bg-[#182533] border border-[#101921] px-3.5 py-2 text-[#d1d5db]"
+                            : "bg-[#182533] border border-[#101921] px-3.5 py-2 text-[#d1d5db] rounded-tl-[4px]"
                         }`}
                       >
                         {msg.forwarded && (
@@ -393,7 +408,6 @@ export default function DMPanel({
                           </div>
                         )}
                         {msg.replyTo && <ReplyPreview replyTo={msg.replyTo} fromSelf={false} />}
-                        {/* {msg.text && <span className="whitespace-pre-wrap break-words block">{msg.text}</span>} */}
                         {msg.callEvent ? (
                           <CallEventBubble
                             callEvent={msg.callEvent}
@@ -406,17 +420,11 @@ export default function DMPanel({
                         ) : (
                           <>
                             {msg.text && (
-                              <span className="whitespace-pre-wrap break-words block">
-                                {msg.text}
-                              </span>
+                              <span className="whitespace-pre-wrap break-words block">{msg.text}</span>
                             )}
-
                             {msg.caption && (
-                              <div className="text-[12px] text-[#d1d5db] mt-1 italic">
-                                {msg.caption}
-                              </div>
+                              <div className="text-[12px] text-[#d1d5db] mt-1 italic">{msg.caption}</div>
                             )}
-
                             {msg.audioUrl && (
                               <AudioPlayer
                                 audioUrl={msg.audioUrl}
@@ -425,10 +433,9 @@ export default function DMPanel({
                                     ? parseFloat(msg.audioDuration)
                                     : msg.audioDuration ?? 0
                                 }
-                                fromSelf={msg.fromSelf}
+                                fromSelf={false}
                               />
                             )}
-
                             {msg.fileUrl && (
                               <FilePreview
                                 fileUrl={msg.fileUrl}
@@ -437,33 +444,21 @@ export default function DMPanel({
                                 isImage={msg.isImage}
                               />
                             )}
+                            {/* ── Reactions ── */}
+                            {msg.reactions && msg.reactions.length > 0 && (
+                              <ReactionBubbles
+                                reactions={msg.reactions}
+                                currentUsername={currentUsername}
+                                onReact={(emoji) => msg._id && onReact?.(msg._id, emoji)}
+                              />
+                            )}
                           </>
                         )}
-                        {/* {msg.caption && <div className="text-[12px] text-[#9ca3af] mt-1 italic">{msg.caption}</div>}
-                        {msg.audioUrl && (
-                          <AudioPlayer
-                            audioUrl={msg.audioUrl}
-                            audioDuration={typeof msg.audioDuration === "string"
-                              ? parseFloat(msg.audioDuration)
-                              : (msg.audioDuration ?? 0)}
-                            fromSelf={msg.fromSelf}
-                          />
-                        )}
-                        {msg.fileUrl && <FilePreview fileUrl={msg.fileUrl} fileName={msg.fileName} fileType={msg.fileType} isImage={msg.isImage} />}
-                        {msg.reactions && msg.reactions.length > 0 && (
-                          <div className="flex flex-wrap gap-1.5 mt-2">
-                            {msg.reactions.map((r) => {
-                              const reacted = r.usernames.includes(currentUsername);
-                              return (
-                                <button key={r.emoji} onClick={() => msg._id && onReact?.(msg._id, r.emoji)}
-                                  className={`flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[12px] cursor-pointer transition-colors ${reacted ? "border border-[rgba(82,136,193,0.4)] bg-[rgba(82,136,193,0.2)] text-[#5288c1] font-semibold" : "border border-[#101921] bg-[#202b36] text-[#9aa5b1]"}`}>
-                                  <span>{r.emoji}</span><span className="text-[11px]">{r.count}</span>
-                                </button>
-                              );
-                            })}
+                        {!msg.callEvent && (
+                          <div className="text-[10px] text-[#9ca3af] mt-1 text-right font-medium opacity-75">
+                            {msg.time}
                           </div>
-                        )} */}
-                        <div className="text-[10px] text-[#9ca3af] mt-1 text-right font-medium opacity-75">{msg.time}</div>
+                        )}
                       </div>
                     </MessageBubble>
                   </div>
@@ -484,7 +479,6 @@ export default function DMPanel({
           </div>
         </div>
 
-        {/* ── Jump to Bottom button — floats over the scroll area ── */}
         {showJumpBtn && (
           <button
             onClick={scrollToBottom}
@@ -496,16 +490,10 @@ export default function DMPanel({
             </svg>
           </button>
         )}
-
-      </div>{/* end relative wrapper */}
+      </div>
 
       {/* ── Bottom bar ── */}
       <div className="bg-[#17212b] border-t border-[#0d1821] shrink-0">
-        {/* {replyTo && onCancelReply && 
-          <ReplyBar 
-            replyTo={replyTo} 
-            onCancel={onCancelReply} 
-          />} */}
         {forwardMsg && onCancelForward && (
           <div className="flex items-center gap-2.5 px-3.5 py-[7px] border-t border-[#0d1821]">
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#f4a93f" strokeWidth="2.2" strokeLinecap="round" className="shrink-0">
@@ -527,10 +515,8 @@ export default function DMPanel({
           </div>
         )}
 
-        {/* ── Recording Preview Bar — OUTSIDE the input row ── */}
         {recording && (
           <div className="flex items-center gap-3 px-3 py-2.5 bg-[#1c2a38] border-b border-[#0d1821]">
-            {/* Cancel */}
             <button
               onClick={handleCancelRecording}
               className="w-8 h-8 flex items-center justify-center rounded-full bg-[#2a3a4a] text-[#8b98a5] hover:bg-red-500/20 hover:text-red-400 transition-colors shrink-0"
@@ -539,24 +525,16 @@ export default function DMPanel({
                 <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
               </svg>
             </button>
-
-            {/* Pulse dot */}
             <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse shrink-0" />
-
-            {/* Waveform + scrolling history — like Telegram/Messenger */}
             <div className="flex-1 min-w-0">
               <canvas
                 ref={waveCanvasRef}
                 style={{ width: "100%", height: "44px", display: "block" }}
               />
             </div>
-
-            {/* Timer */}
             <span className="text-[13px] font-mono text-[#8b98a5] shrink-0 tabular-nums w-10 text-right">
               {String(Math.floor(recordingSeconds / 60)).padStart(2, "0")}:{String(recordingSeconds % 60).padStart(2, "0")}
             </span>
-
-            {/* Send */}
             <button
               onClick={handleStopAndSend}
               className="w-9 h-9 flex items-center justify-center rounded-full bg-[#5288c1] text-white hover:bg-[#4377aa] active:scale-95 transition-all shrink-0"
@@ -568,37 +546,35 @@ export default function DMPanel({
           </div>
         )}
 
-        {/* ── Input row — always visible ── */}
-          <InputBar
-            currentRoom={withUser}
-            onSend={(text, file, audio) => {
-              onSend(
-                text,
-                file,
-                audio
-                  ? {
-                      audioUrl: audio.audioUrl,
-                      audioDuration: String(audio.audioDuration),
-                    }
-                  : undefined,
-                replyTo
-              );
-            }}
-            onTyping={onTyping}
-            replyTo={replyTo}
-            onCancelReply={onCancelReply}
-            forwardMsg={forwardMsg}
-            onCancelForward={onCancelForward}
-            onForwardSend={onForwardSend}
-            isRecording={recording}
-            onStartRecording={handleStartRecording}  
-            onStopRecording={handleStopAndSend}     
-            onCancelRecording={handleCancelRecording} 
-          />
+        <InputBar
+          currentRoom={withUser}
+          onSend={(text, file, audio) => {
+            onSend(
+              text,
+              file,
+              audio
+                ? {
+                    audioUrl: audio.audioUrl,
+                    audioDuration: String(audio.audioDuration),
+                  }
+                : undefined,
+              replyTo
+            );
+          }}
+          onTyping={onTyping}
+          replyTo={replyTo}
+          onCancelReply={onCancelReply}
+          forwardMsg={forwardMsg}
+          onCancelForward={onCancelForward}
+          onForwardSend={onForwardSend}
+          isRecording={recording}
+          onStartRecording={handleStartRecording}  
+          onStopRecording={handleStopAndSend}     
+          onCancelRecording={handleCancelRecording} 
+        />
         </div>
       </div>
 
-      {/* ── Profile info popup ── */}
       {showInfoPanel && (
         <UserProfileModal
           username={withUser}

@@ -1,4 +1,4 @@
-import { geminiModel, geminiModelFast } from "./gemini";
+import { geminiModel, geminiModelFast } from "./Groq";
 import { PROMPTS } from "./prompts";
 
 export interface ChatMessage {

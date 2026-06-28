@@ -35,6 +35,12 @@ export interface IMessage extends Document {
 
   fromUsername?: string;
   caption?: string;
+
+  // NEW FIELDS (DELETE FEATURE) — mirrors IDirectMessage
+  deletedFor?: string[];           // delete for me (per-user hide)
+  deletedForEveryone?: boolean;    // unsent for the whole room
+  deletedAt?: Date;
+
   createdAt: Date;
 }
 
@@ -85,6 +91,11 @@ const MessageSchema = new Schema<IMessage>(
 
     fromUsername: { type: String },
     caption: { type: String },
+
+    // NEW FIELDS (DELETE FEATURE)
+    deletedFor: { type: [String], default: [] },
+    deletedForEveryone: { type: Boolean, default: false },
+    deletedAt: { type: Date },
   },
   { timestamps: true }
 );

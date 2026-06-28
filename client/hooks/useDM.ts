@@ -45,7 +45,7 @@ export function useDM(socket: Socket | null, username: string) {
   useEffect(() => {
     if (!socket) return;
 
-    // DM history
+    // ── DM history ────────────────────────────────────────────────
     socket.on("dm_history", ({ with: withUser, messages, isGroup }: {
       with: string;
       isGroup?: boolean;
@@ -54,12 +54,10 @@ export function useDM(socket: Socket | null, username: string) {
         from: string;
         to: string;
         text: string;
-
         type?: string;
         callType?: "voice" | "video";
         callEvent?: "ended" | "missed" | "rejected";
         duration?: number;
-
         createdAt: string;
         fileUrl?: string;
         fileName?: string;
@@ -70,6 +68,7 @@ export function useDM(socket: Socket | null, username: string) {
         replyTo?: { _id: string; username: string; text: string };
         forwarded?: boolean;
         reactions?: { emoji: string; count: number; usernames: string[] }[];
+        deletedForEveryone?: boolean;
       }>;
     }) => {
       const mapped: DMMessage[] = messages.map((m) => ({
@@ -89,17 +88,14 @@ export function useDM(socket: Socket | null, username: string) {
         replyTo: m.replyTo,
         forwarded: m.forwarded,
         reactions: m.reactions ?? [],
-
-        // ── call fields ──
+        deletedForEveryone: m.deletedForEveryone ?? false,
         callEvent:    m.type === "call" ? m.callEvent : undefined,
         callType:     m.type === "call" ? m.callType  : undefined,
         callDuration: m.type === "call" ? m.duration  : undefined,
-
         status: "seen" as MessageStatus,
-      }))
-      setDmMessages(mapped); // use mapped, not inline .map() again
+      }));
+      setDmMessages(mapped);
 
-      // Mark this conversation as group if applicable
       if (isGroup) {
         setConversations(prev => prev.map(c =>
           c.username === withUser ? { ...c, isGroup: true } : c
@@ -107,7 +103,7 @@ export function useDM(socket: Socket | null, username: string) {
       }
     });
 
-    // Receive DM
+    // ── Receive DM ────────────────────────────────────────────────
     socket.on("dm_receive", (data: {
       _id: string;
       from: string;
@@ -133,24 +129,15 @@ export function useDM(socket: Socket | null, username: string) {
       groupName?: string;
     }) => {
       const isCall = data.type === "call";
-
-      // ← For calls, "other user" depends on which side you are
-      // Caller: data.from === username, so other = data.to
-      // Receiver: data.from !== username, so other = data.from
       const otherUser = data.from === username ? data.to : data.from;
-      // const isOutgoing = data.from !== username;
       const isOutgoing = data.from === username;
-
-
-      // const isOutgoing = data.from === username && data.to === otherUser;
-
-      const isOpen = activeDMRef.current === otherUser || // ← use otherUser, not data.from
+      const isOpen =
+        activeDMRef.current === otherUser ||
         (data.isGroup && activeDMRef.current === data.groupName);
 
       if (isOpen) {
         setDmMessages((prev) => {
-          if (prev.some((m) => m._id === data._id)) return prev; // ✅ prevent duplicate
-
+          if (prev.some((m) => m._id === data._id)) return prev;
           return [
             ...prev,
             {
@@ -158,7 +145,7 @@ export function useDM(socket: Socket | null, username: string) {
               text: data.text,
               fromSelf: isOutgoing,
               time: data.time,
-              username: otherUser, //  FIXED
+              username: otherUser,
               fileUrl: data.fileUrl,
               fileName: data.fileName,
               fileType: data.fileType,
@@ -181,18 +168,7 @@ export function useDM(socket: Socket | null, username: string) {
           socket.emit("messages_seen", { messageIds: [data._id], to: data.from });
         }
       } else {
-        // ← use otherUser as convKey too, not data.from
         const convKey = data.isGroup ? (data.groupName ?? otherUser) : otherUser;
-
-        // const preview = isCall
-        //   ? data.callEvent === "missed"   ? "📵 Missed call"
-        //   : data.callEvent === "rejected" ? "🚫 Call declined"
-        //   : "📞 Call ended"
-        //   : data.text     ? data.text
-        //   : data.audioUrl ? "🎤 Voice message"
-        //   : "📎 File";
-        const isOutgoing = data.from === username;
-
         const preview = isCall
           ? data.callEvent === "missed"
             ? isOutgoing ? "📞 No answer" : "📵 Missed call"
@@ -209,7 +185,7 @@ export function useDM(socket: Socket | null, username: string) {
       }
     });
 
-    // DM sent confirmed
+    // ── DM sent confirmed ─────────────────────────────────────────
     socket.on("dm_sent", (data: {
       _id: string;
       tempId?: string;
@@ -231,17 +207,16 @@ export function useDM(socket: Socket | null, username: string) {
         prev.map((msg) =>
           msg._id === data.tempId
             ? {
-                ...msg,          // keep everything from optimistic message
-                _id:           data._id,
-                status:        "sent" as MessageStatus,
-                // only override if server sent a value
+                ...msg,
+                _id: data._id,
+                status: "sent" as MessageStatus,
                 ...(data.audioUrl      && { audioUrl:      data.audioUrl }),
                 ...(data.audioDuration && { audioDuration: data.audioDuration }),
                 ...(data.fileUrl       && { fileUrl:        data.fileUrl }),
                 ...(data.fileName      && { fileName:       data.fileName }),
                 ...(data.fileType      && { fileType:       data.fileType }),
-                ...(data.isImage  !== undefined && { isImage: data.isImage }),
-                ...(data.forwarded    !== undefined && { forwarded:    data.forwarded }),
+                ...(data.isImage !== undefined && { isImage: data.isImage }),
+                ...(data.forwarded !== undefined && { forwarded: data.forwarded }),
                 ...(data.replyTo      && { replyTo:      data.replyTo }),
                 ...(data.caption      && { caption:      data.caption }),
                 ...(data.fromUsername && { fromUsername: data.fromUsername }),
@@ -251,12 +226,39 @@ export function useDM(socket: Socket | null, username: string) {
       );
     });
 
-    socket.on("dm_reaction_updated", ({ messageId, reactions }) => {
+    // ── Reaction updated ──────────────────────────────────────────
+    socket.on("dm_reaction_updated", ({ messageId, reactions }: {
+      messageId: string;
+      reactions: { emoji: string; count: number; usernames: string[] }[];
+    }) => {
       setDmMessages(prev =>
         prev.map(msg => msg._id === messageId ? { ...msg, reactions } : msg)
       );
     });
 
+    // ── Message unsent (deleted for everyone) ─────────────────────
+    socket.on("dm_unsent", ({ messageId }: { messageId: string }) => {
+      setDmMessages(prev =>
+        prev.map(msg =>
+          msg._id === messageId
+            ? {
+                ...msg,
+                text: "",
+                deletedForEveryone: true,
+                fileUrl: undefined,
+                fileName: undefined,
+                fileType: undefined,
+                audioUrl: undefined,
+                audioDuration: undefined,
+                replyTo: undefined,
+                reactions: [],
+              }
+            : msg
+        )
+      );
+    });
+
+    // ── Delivery / seen status ────────────────────────────────────
     socket.on("message_delivered", ({ messageId }: { messageId: string }) => {
       setDmMessages((prev) =>
         prev.map((msg) =>
@@ -277,6 +279,7 @@ export function useDM(socket: Socket | null, username: string) {
       );
     });
 
+    // ── Typing ────────────────────────────────────────────────────
     socket.on("dm_user_typing", (from: string) => {
       if (from === activeDMRef.current) {
         setDmTyping(from);
@@ -287,17 +290,12 @@ export function useDM(socket: Socket | null, username: string) {
 
     socket.on("dm_user_stop_typing", () => setDmTyping(null));
 
-    // NOTE: "room_created" listener intentionally removed.
-    // Groups live exclusively in `rooms` state (via useRoom.ts / "room_list").
-    // Previously this handler also called updateConversation(roomId, "Group created", ...),
-    // which created a duplicate sidebar entry for every new group — one from `rooms`
-    // (the "# room" row) and one from `conversations` (the "Group created" row).
-
     return () => {
       socket.off("dm_history");
       socket.off("dm_receive");
       socket.off("dm_sent");
       socket.off("dm_reaction_updated");
+      socket.off("dm_unsent");
       socket.off("message_delivered");
       socket.off("messages_seen");
       socket.off("dm_user_typing");
@@ -391,7 +389,6 @@ export function useDM(socket: Socket | null, username: string) {
     socket.emit("messages_seen", { messageIds, to: activeDMRef.current });
   };
 
-
   return {
     activeDM,
     dmMessages,
@@ -402,6 +399,5 @@ export function useDM(socket: Socket | null, username: string) {
     sendDM,
     emitDMTyping,
     markDMSeen,
-    // addCallEventMessage,
   };
 }

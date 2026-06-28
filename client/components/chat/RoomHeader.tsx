@@ -40,7 +40,8 @@ function getGroupGradient(name: string): string {
 
 export default function RoomHeader({
   room, connected, onlineUsers, allUsers, currentUsername, userProfiles,
-  onOpenDM, onLeaveGroup, onDeleteGroup, onDeleteChat, onUpdateGroupAvatar, onAddMembers,
+  onOpenDM, onLeaveGroup, onDeleteGroup, onDeleteChat, onUpdateGroupAvatar,
+  onAddMembers, onRenameGroup,
 }: {
   room: RoomSummary;
   connected: boolean;
@@ -54,6 +55,7 @@ export default function RoomHeader({
   onDeleteChat: () => void;
   onUpdateGroupAvatar?: (roomId: string, file: File) => void;
   onAddMembers?: (roomId: string, members: string[]) => void;
+  onRenameGroup?: (roomId: string, newName: string) => void;
 }) {
   const [showMenu, setShowMenu] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
@@ -102,6 +104,7 @@ export default function RoomHeader({
           onOpenDM={(u) => { onOpenDM(u); setShowProfile(false); }}
           onUpdateAvatar={onUpdateGroupAvatar}
           onAddMembers={onAddMembers ? () => { setShowProfile(false); setShowAddMembers(true); } : undefined}
+          onRenameGroup={onRenameGroup}
         />
       )}
 

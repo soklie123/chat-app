@@ -7,6 +7,8 @@ import { registerMessageHandlers } from "./message.handlers";
 import { registerReactionHandlers } from "./reaction.handlers";
 import { registerDMHandlers } from "./dm.handlers";
 import { registerAIHandlers } from "./ai.handlers";
+import { registerMessageDeleteHandlers } from "./message.delete.handlers";
+import { registerDmDeleteHandlers } from "./dm.delete.handlers";
 
 export function registerSocketHandlers(io: Server) {
   io.on("connection", (socket: Socket) => {
@@ -21,6 +23,8 @@ export function registerSocketHandlers(io: Server) {
     registerReactionHandlers(io, socket);
     registerDMHandlers(io, socket);
     registerAIHandlers(io, socket);
+    registerMessageDeleteHandlers(io, socket);
+    registerDmDeleteHandlers(io, socket);
 
     // ── Disconnect ─────────────────────────────────────────
     socket.on("disconnect", async () => {
@@ -36,3 +40,6 @@ export function registerSocketHandlers(io: Server) {
     });
   });
 }
+
+
+//wires up all the socket event handlers

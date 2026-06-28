@@ -53,6 +53,7 @@ export default function MessageList({
   onReply,
   onForward,
   onPinMessage,
+  onDeleteMessage,
   allUsers,
   onlineUsers,
   rooms,
@@ -67,6 +68,7 @@ export default function MessageList({
   onReply: (msg: { _id: string; username: string; text: string }) => void;
   onForward: (text: string, fromUsername: string, to: string, isRoom: boolean) => void;
   onPinMessage?: (messageId: string) => void;
+  onDeleteMessage?: (messageId: string) => void;
   allUsers: string[];
   onlineUsers: string[];
   rooms: { id: string; name: string }[];
@@ -170,6 +172,7 @@ export default function MessageList({
                       onForward(text, fromUsername, currentRoom, true)
                     }
                     onPin={onPinMessage}
+                    onDelete={onDeleteMessage}
                     allUsers={allUsers}
                     onlineUsers={onlineUsers}
                     rooms={rooms}
@@ -245,6 +248,7 @@ export default function MessageList({
                     onReply={onReply}
                     onForward={onForward}
                     onPin={onPinMessage}
+                    onDelete={onDeleteMessage}
                     allUsers={allUsers}
                     onlineUsers={onlineUsers}
                     rooms={rooms}

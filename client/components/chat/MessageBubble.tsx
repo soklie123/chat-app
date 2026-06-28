@@ -6,7 +6,7 @@ const EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "😡"];
 
 export function HoverPanel({
   msgId, msgUsername, msgText,
-  onReact, onReply, onForward, onPin,
+  onReact, onReply, onForward, onPin, onDelete,
   align, allUsers, onlineUsers, rooms, currentUsername,
 }: {
   msgId?: string;
@@ -16,6 +16,7 @@ export function HoverPanel({
   onReply: (msg: { _id: string; username: string; text: string }) => void;
   onForward: (text: string, fromUsername: string, to: string, isRoom: boolean) => void;
   onPin?: (messageId: string) => void;
+  onDelete?: (messageId: string) => void;
   align: "left" | "right";
   allUsers: string[];
   onlineUsers: string[];
@@ -25,12 +26,28 @@ export function HoverPanel({
   const [emojiExpanded, setEmojiExpanded] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+
+  // Only the author can delete their own message.
+  const canDelete = !!onDelete && !!msgId && msgUsername === currentUsername;
 
   const handleCopy = () => {
     navigator.clipboard.writeText(msgText).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
+  };
+
+  const handleDeleteClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!confirmingDelete) {
+      setConfirmingDelete(true);
+      // auto-reset the confirm state if they don't click again
+      setTimeout(() => setConfirmingDelete(false), 3000);
+      return;
+    }
+    if (msgId) onDelete?.(msgId);
   };
 
   return (
@@ -139,6 +156,30 @@ export function HoverPanel({
               </button>
             </>
           )}
+
+          {canDelete && (
+            <>
+              <div className="w-[1px] h-4 bg-[#101921]" />
+              <button
+                onMouseDown={handleDeleteClick}
+                onBlur={() => setConfirmingDelete(false)}
+                className={`flex items-center gap-1.5 px-3 py-2 text-[12.5px] font-medium transition-all min-w-[78px] justify-center ${
+                  confirmingDelete
+                    ? "bg-red-500/15 text-red-400"
+                    : "text-gray-300 hover:bg-[#202b36] hover:text-red-400"
+                }`}
+                title={confirmingDelete ? "Click again to confirm" : "Delete message"}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="3 6 5 6 21 6" />
+                  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                  <path d="M10 11v6" /><path d="M14 11v6" />
+                  <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                </svg>
+                {confirmingDelete ? "Confirm?" : "Delete"}
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -164,7 +205,7 @@ export function HoverPanel({
 export function MessageBubble({
   id, hoveredId, setHoveredId, fromSelf, children,
   msgId, msgUsername, msgText,
-  onReact, onReply, onForward, onPin,
+  onReact, onReply, onForward, onPin, onDelete,
   allUsers, onlineUsers, rooms, currentUsername,
 }: {
   id: string;
@@ -179,6 +220,7 @@ export function MessageBubble({
   onReply: (msg: { _id: string; username: string; text: string }) => void;
   onForward: (text: string, fromUsername: string, to: string, isRoom: boolean) => void;
   onPin?: (messageId: string) => void;
+  onDelete?: (messageId: string) => void;
   allUsers: string[];
   onlineUsers: string[];
   rooms: { id: string; name: string }[];
@@ -226,6 +268,7 @@ export function MessageBubble({
               onReply={onReply}
               onForward={onForward}
               onPin={onPin}
+              onDelete={onDelete}
               align={fromSelf ? "right" : "left"}
               allUsers={allUsers}
               onlineUsers={onlineUsers}

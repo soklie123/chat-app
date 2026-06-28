@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import Avatar from "../shared/Avatar";
 import GroupIcon from "../shared/GroupIcon";
 import { UserProfile } from "../../hooks/useChat";
@@ -45,6 +45,7 @@ export default function GroupProfileModal({
   onOpenDM,
   onUpdateAvatar,
   onAddMembers,
+  onRenameGroup,
 }: {
   room: RoomSummary;
   currentUsername: string;
@@ -54,15 +55,53 @@ export default function GroupProfileModal({
   onOpenDM: (username: string) => void;
   onUpdateAvatar?: (roomId: string, file: File) => void;
   onAddMembers?: () => void;
+  onRenameGroup?: (roomId: string, newName: string) => void;
 }) {
   const avatarInputRef = useRef<HTMLInputElement>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
   const isCreator = room.createdBy === currentUsername;
   const onlineCount = (room.members ?? []).filter((m) => onlineUsers.includes(m)).length;
+
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [nameValue, setNameValue] = useState(room.name);
+  const [nameError, setNameError] = useState("");
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !onUpdateAvatar) return;
     onUpdateAvatar(room.id, file);
+  };
+
+  const handleStartEditName = () => {
+    setNameValue(room.name);
+    setNameError("");
+    setIsEditingName(true);
+    setTimeout(() => nameInputRef.current?.focus(), 50);
+  };
+
+  const handleSaveName = () => {
+    const trimmed = nameValue.trim().toLowerCase().replace(/\s+/g, "-");
+    if (!trimmed) {
+      setNameError("Name cannot be empty.");
+      return;
+    }
+    if (trimmed.length < 2) {
+      setNameError("Name must be at least 2 characters.");
+      return;
+    }
+    if (trimmed === room.name) {
+      setIsEditingName(false);
+      return;
+    }
+    onRenameGroup?.(room.id, trimmed);
+    setIsEditingName(false);
+    setNameError("");
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditingName(false);
+    setNameValue(room.name);
+    setNameError("");
   };
 
   return (
@@ -126,17 +165,73 @@ export default function GroupProfileModal({
             )}
           </div>
 
-          <div className="text-center">
-            <div className="flex items-center justify-center gap-1.5">
-              <GroupIcon size={14} className="text-[#8b98a5] shrink-0" />
-              <span className="text-white font-bold text-[20px]">#{room.name}</span>
-            </div>
-            <div className="text-[#8b98a5] text-[13px] mt-0.5">
-              {room.members?.length ?? room.memberCount ?? 0} members
-              {onlineCount > 0 && (
-                <span className="text-[#4ade80]"> · {onlineCount} online</span>
-              )}
-            </div>
+          {/* Group name — editable for creator */}
+          <div className="text-center w-full">
+            {isEditingName ? (
+              <div className="flex flex-col items-center gap-2 w-full px-4">
+                <div className="flex items-center gap-2 w-full">
+                  <span className="text-[#8b98a5] text-[15px] shrink-0">#</span>
+                  <input
+                    ref={nameInputRef}
+                    value={nameValue}
+                    onChange={(e) => { setNameValue(e.target.value); setNameError(""); }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleSaveName();
+                      if (e.key === "Escape") handleCancelEdit();
+                    }}
+                    className="flex-1 bg-[#202b36] border border-[#5288c1] rounded-lg px-3 py-1.5 text-white text-[15px] font-bold outline-none text-center"
+                    maxLength={32}
+                    placeholder="group-name"
+                  />
+                </div>
+                {nameError && (
+                  <p className="text-red-400 text-[12px]">{nameError}</p>
+                )}
+                <p className="text-[#6c7883] text-[11px]">
+                  Spaces become hyphens · lowercase only
+                </p>
+                <div className="flex gap-2 mt-1">
+                  <button
+                    onClick={handleCancelEdit}
+                    className="px-4 py-1.5 rounded-lg bg-[#202b36] text-[#8b98a5] text-[13px] hover:bg-[#2c3e50] transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSaveName}
+                    className="px-4 py-1.5 rounded-lg bg-[#5288c1] text-white text-[13px] font-semibold hover:bg-[#4377aa] transition-colors"
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center gap-1">
+                <div className="flex items-center justify-center gap-1.5">
+                  <GroupIcon size={14} className="text-[#8b98a5] shrink-0" />
+                  <span className="text-white font-bold text-[20px]">#{room.name}</span>
+                  {/* Edit pencil — only creator */}
+                  {isCreator && onRenameGroup && (
+                    <button
+                      onClick={handleStartEditName}
+                      title="Rename group"
+                      className="w-6 h-6 flex items-center justify-center rounded-full text-[#6c7883] hover:text-[#5288c1] hover:bg-[#202b36] transition-colors ml-0.5"
+                    >
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+                <div className="text-[#8b98a5] text-[13px]">
+                  {room.members?.length ?? room.memberCount ?? 0} members
+                  {onlineCount > 0 && (
+                    <span className="text-[#4ade80]"> · {onlineCount} online</span>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

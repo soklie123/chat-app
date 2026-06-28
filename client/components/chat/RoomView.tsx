@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
+import axios from "axios";
 import { ChatMessage, TypingUser } from "../../types/chat";
 import MessageList from "./MessageList";
 import InputBar from "../shared/InputBar";
@@ -6,6 +7,9 @@ import ForwardBar from "../shared/ForwardBar";
 import RoomHeader from "./RoomHeader";
 import GroupIcon from "../shared/GroupIcon";
 import { UserProfile } from "../../hooks/useChat";
+import useVoiceRecorder from "../../hooks/useVoiceRecorder";
+
+const UPLOAD_URL = "http://localhost:4000/upload";
 
 type ReplyDraft = { _id: string; username: string; text: string } | null;
 type ForwardDraft = { text: string; fromUsername: string } | null;
@@ -83,6 +87,50 @@ export default function RoomView({
 }) {
   const room = rooms.find((r) => r.id === currentRoom);
   const [showPinnedList, setShowPinnedList] = useState(false);
+
+  // ── Voice recorder ─────────────────────────────────────
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const timerRef = useRef<number | null>(null);
+  const waveCanvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  const handleVoiceRecorded = async (blob: Blob, duration: number) => {
+    try {
+      const formData = new FormData();
+      formData.append("file", blob, `voice-${Date.now()}.webm`);
+      const res = await axios.post(UPLOAD_URL, formData);
+      onSend("", undefined, {
+        audioUrl: res.data.url,
+        audioDuration: duration,
+      });
+    } catch {
+      alert("Voice upload failed.");
+    }
+  };
+
+  const { recording, start, stop, cancel } = useVoiceRecorder(
+    handleVoiceRecorded,
+    waveCanvasRef,
+  );
+
+  const handleStartRecording = async () => {
+    setRecordingSeconds(0);
+    await start();
+    timerRef.current = window.setInterval(() => {
+      setRecordingSeconds((s) => s + 1);
+    }, 1000);
+  };
+
+  const handleStopAndSend = () => {
+    if (timerRef.current !== null) { window.clearInterval(timerRef.current); timerRef.current = null; }
+    stop();
+  };
+
+  const handleCancelRecording = () => {
+    if (timerRef.current !== null) { window.clearInterval(timerRef.current); timerRef.current = null; }
+    setRecordingSeconds(0);
+    cancel();
+  };
+  // ───────────────────────────────────────────────────────
 
   if (!room) return null;
 
@@ -204,6 +252,38 @@ export default function RoomView({
         />
       )}
 
+      {/* Recording waveform bar — shown above InputBar while recording */}
+      {recording && (
+        <div className="flex items-center gap-3 px-3 py-2.5 bg-[#1c2a38] border-t border-[#0d1821] shrink-0">
+          <button
+            onClick={handleCancelRecording}
+            className="w-8 h-8 flex items-center justify-center rounded-full bg-[#2a3a4a] text-[#8b98a5] hover:bg-red-500/20 hover:text-red-400 transition-colors shrink-0"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+          <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse shrink-0" />
+          <div className="flex-1 min-w-0">
+            <canvas
+              ref={waveCanvasRef}
+              style={{ width: "100%", height: "44px", display: "block" }}
+            />
+          </div>
+          <span className="text-[13px] font-mono text-[#8b98a5] shrink-0 tabular-nums w-10 text-right">
+            {String(Math.floor(recordingSeconds / 60)).padStart(2, "0")}:{String(recordingSeconds % 60).padStart(2, "0")}
+          </span>
+          <button
+            onClick={handleStopAndSend}
+            className="w-9 h-9 flex items-center justify-center rounded-full bg-[#5288c1] text-white hover:bg-[#4377aa] active:scale-95 transition-all shrink-0"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" />
+            </svg>
+          </button>
+        </div>
+      )}
+
       <InputBar
         currentRoom={currentRoom}
         onSend={(text, file, audio) => { onSend(text ?? "", file, audio); setReplyTo(null); }}
@@ -213,6 +293,10 @@ export default function RoomView({
         forwardMsg={forwardData ?? undefined}
         onCancelForward={() => setForwardData(null)}
         onForwardSend={(text, fromUsername, caption) => sendForward(caption)}
+        isRecording={recording}
+        onStartRecording={handleStartRecording}
+        onStopRecording={handleStopAndSend}
+        onCancelRecording={handleCancelRecording}
       />
     </div>
   );

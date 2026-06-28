@@ -11,12 +11,20 @@ import Sidebar from "../components/layout/Sidebar";
 import DMPanel from "../components/dm/DMPanel";
 import RoomView from "../components/chat/RoomView";
 import CallScreen from "../components/call/CallScreen";
-import { AuthUser } from "../lib/api";
+import { AuthUser, getToken } from "../lib/api";
 
 type ReplyDraft = { _id: string; username: string; text: string } | null;
 type ForwardDraft = { text: string; fromUsername: string } | null;
 type SendFile = { fileUrl: string; fileName: string; fileType: string; isImage: boolean };
 type AudioDraft = { audioUrl: string; audioDuration: number | string };
+type RoomSummary = {
+  id: string;
+  name: string;
+  memberCount: number;
+  members: string[];
+  createdBy: string;
+  avatarUrl?: string;
+};
 
 export default function Home() {
   const [username, setUsername] = useState("");
@@ -154,43 +162,85 @@ export default function Home() {
     return () => { socket.off("invited_to_group", onInvited); };
   }, [socket, notifyInvite, addToast]);
 
-  const handleCreateGroup = (name: string, members: string[], avatarFile?: File) => {
-    const roomId = name.trim().toLowerCase().replace(/\s+/g, "-");
-    if (!socket) {
+  // ── Create group ────────────────────────────────────────
+  const handleCreateGroup = async (name: string, members: string[], avatarFile?: File) => {
+    if (!socket || !connected) {
       addToast("Error", "Not connected to the server. Try refreshing.", false, undefined, "room");
       return;
     }
 
-    const onCreated = async (createdRoomId: string) => {
-      if (createdRoomId !== roomId) return;
-      socket.off("room_created", onCreated);
-      clearTimeout(timeoutId);
+    const trimmedName = name.trim();
+    if (!trimmedName) return;
 
-      if (members.length > 0) {
-        socket.emit("invite_to_group", { room: createdRoomId, users: members });
-      }
-
-      if (avatarFile) {
-        try {
-          await updateGroupAvatar(createdRoomId, avatarFile);
-        } catch (err) {
-          const message = err instanceof Error ? err.message : "Avatar upload failed";
-          addToast(createdRoomId, `Group created, but photo upload failed: ${message}`, false, createdRoomId, "room");
+    // 1. Upload avatar first so we can send the URL with the create event
+    let avatarUrl: string | undefined;
+    if (avatarFile) {
+      try {
+        const formData = new FormData();
+        formData.append("file", avatarFile);
+        const token = getToken();
+        const res = await fetch("http://localhost:4000/upload", {
+          method: "POST",
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          body: formData,
+        });
+        if (res.ok) {
+          const data = await res.json();
+          avatarUrl = data.url;
+        } else {
+          console.error("Avatar upload failed with status:", res.status);
         }
+      } catch (err) {
+        console.error("Avatar upload error:", err);
+        // Non-fatal — group will be created without avatar
       }
+    }
 
+    // 2. Cleanup helper
+    const cleanup = () => {
+      socket.off("room_created", onCreated);
+      socket.off("room_exists", onExists);
+      clearTimeout(timeoutId);
+    };
+
+    // 3. Success — server confirmed room was created
+    const onCreated = (createdRoomId: string) => {
+      cleanup();
+      addToast(createdRoomId, "Group created!", false, createdRoomId, "room");
       handleOpenRoom(createdRoomId);
     };
 
+    // 4. Room name already taken — show error, don't silently open
+    const onExists = (existingRoomId: string) => {
+      cleanup();
+      addToast(
+        "Error",
+        `A group named "${existingRoomId}" already exists. Choose a different name.`,
+        false,
+        undefined,
+        "room",
+      );
+    };
+
     socket.on("room_created", onCreated);
+    socket.on("room_exists", onExists);
 
+    // 5. Timeout fallback
     const timeoutId = setTimeout(() => {
-      socket.off("room_created", onCreated);
-      addToast("Error", "Group creation timed out. Check your connection and try again.", false, undefined, "room");
-    }, 5000);
+      cleanup();
+      addToast(
+        "Error",
+        "Group creation timed out. Make sure the server is running and try again.",
+        false,
+        undefined,
+        "room",
+      );
+    }, 8000);
 
-    socket.emit("create_room", name);
+    // 6. Single emit — server handles members + avatar in one step
+    socket.emit("create_room", { roomName: trimmedName, members, avatarUrl });
   };
+  // ───────────────────────────────────────────────────────
 
   const handleAddMembers = (roomId: string, members: string[]) => {
     if (!socket || members.length === 0) return;

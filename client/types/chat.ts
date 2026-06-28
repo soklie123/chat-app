@@ -42,10 +42,9 @@ export type DMMessage = {
   time: string;
   username: string;
   reactions?: { emoji: string; count: number; usernames: string[] }[];
-  isSystem?: boolean;  
+  isSystem?: boolean;
   fileUrl?: string;
   fileName?: string;
-
   fileType?: string;
   isImage?: boolean;
   audioUrl?: string;
@@ -58,6 +57,8 @@ export type DMMessage = {
   forwarded?: boolean;
   caption?: string;
   fromUsername?: string;
+  /** Set to true by the dm_unsent socket event — renders a "deleted" placeholder */
+  deletedForEveryone?: boolean;
 };
 
 export type DMConversation = {

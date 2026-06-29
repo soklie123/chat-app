@@ -88,12 +88,10 @@ export default function DMPanel({
   onForwardSend?: (text: string, fromUsername: string, caption: string) => void;
   withUserProfile?: UserProfile;
 }) {
-  const [uploading, setUploading] = useState(false);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [showJumpBtn, setShowJumpBtn] = useState(false);
   const [showInfoPanel, setShowInfoPanel] = useState(false);
 
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const isNearBottomRef = useRef(true);

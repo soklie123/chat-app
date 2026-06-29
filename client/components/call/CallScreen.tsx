@@ -63,29 +63,40 @@ export default function CallScreen({
 
   const [callDuration, setCallDuration] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const connectedAtRef = useRef<number | null>(null);
 
-  // Start timer when connected, stop when not
-  useEffect(() => {
-    // Only start timer when BOTH connected AND remote stream exists
-    if (callState === "connected" && remoteStream) {
-      timerRef.current = setInterval(() => {
-        setCallDuration((prev) => prev + 1);
-      }, 1000);
-
-      return () => {
-        if (timerRef.current) {
-          clearInterval(timerRef.current);
-          timerRef.current = null;
-        }
-      };
-    } else {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
+useEffect(() => {
+  if (callState !== "connected") {
+    // Reset everything when not in a call
+    connectedAtRef.current = null;
+    setCallDuration(0);
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
     }
-  }, [callState, remoteStream]); // add remoteStream as dependency
+    return;
+  }
 
+  // Stamp once on first "connected" render
+  if (connectedAtRef.current === null) {
+    connectedAtRef.current = Date.now();
+  }
+
+  // Start interval
+  timerRef.current = setInterval(() => {
+    setCallDuration(
+      Math.floor((Date.now() - connectedAtRef.current!) / 1000)
+    );
+  }, 1000);
+
+  return () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  };
+}, [callState]);
+  
   useEffect(() => {
     if (localVideoRef.current && localStream) {
       localVideoRef.current.srcObject = localStream;
@@ -199,7 +210,7 @@ export default function CallScreen({
             <p className="text-white font-semibold">{otherUser}</p>
             <p className="text-white/50 text-xs">
               {callState === "connected"
-                ? "Connected"
+                ? formatCallDuration(callDuration)
                 : callState === "calling"
                 ? "Calling…"
                 : "Incoming"}
